@@ -90,7 +90,7 @@ function decodeTokenInstruction(data, accountKeys, accountIndexes) {
       // Format with BigInt to avoid precision loss for amounts > 2^53
       const amountStr = formatTokenAmount(amount, decimals);
       return {
-        action: 'TransferChecked',
+        action: 'Transfer checked',
         description: `Transfer ${amountStr} tokens`,
         details: { amount: amount.toString(), decimals, amountFormatted: amountStr, source, mint, destination: dest },
       };
@@ -123,7 +123,7 @@ function decodeSystemInstruction(data, accountKeys, accountIndexes) {
       const owner = accountKeys[accountIndexes[0]] || '?';
       const solAmount = Number(lamports) / 1e9;
       return {
-        action: 'CreateAccount',
+        action: 'Create account',
         description: `Create account with ${solAmount.toFixed(4)} SOL`,
         details: { lamports: lamports.toString(), space: space.toString(), owner },
       };

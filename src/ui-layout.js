@@ -2,7 +2,7 @@
  * UI Layout — Quiet Dark redesign.
  * All rendering via el() — no innerHTML.
  */
-import { el, addrEl, formatSol, formatTimestamp, statusBadge, sanitize, fragment } from './ui-helpers.js';
+import { el, addrEl, formatSol, formatTimestamp, statusBadge, sanitize, fragment, icon } from './ui-helpers.js';
 import { shortenAddress, toHex, getTransactionPda, encodeBase58 } from './squads.js';
 import { getState, setState, getExplorerUrl, EXPLORER_ALLOWLIST } from './state.js';
 import { decodeInstruction, KNOWN_PROGRAMS } from './decode.js';
@@ -29,8 +29,8 @@ export function renderSetup(onComplete) {
 
   const logoBar = el('div', { className: 'setup-logo' });
   const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-  logoBar.appendChild(el('img', { src: isDark ? 'logotype-white.svg' : 'logotype-black.svg', height: '36', alt: 'Squads' }));
-  logoBar.appendChild(el('span', {}, 'Verifier'));
+  logoBar.appendChild(el('img', { src: isDark ? 'wordmark-dark.svg' : 'wordmark-light.svg', height: '26', alt: 'Asymmetric Research' }));
+  logoBar.appendChild(el('span', {}, 'Multisig verifier'));
   container.appendChild(logoBar);
 
   const card = el('div', { className: 'setup-card' });
@@ -41,7 +41,7 @@ export function renderSetup(onComplete) {
   const form = el('div');
 
   const addressField = el('div', { className: 'field' });
-  addressField.appendChild(el('label', {}, 'Multisig Address'));
+  addressField.appendChild(el('label', {}, 'Multisig address'));
   const addressInput = el('input', { type: 'text', placeholder: 'Enter base58 address...' });
   addressField.appendChild(addressInput);
   form.appendChild(addressField);
@@ -144,7 +144,7 @@ function renderSettingsModal(state) {
         location.reload();
       }
     },
-  }, 'Save & Reload'));
+  }, 'Save & reload'));
   actions.appendChild(el('button', {
     className: 'btn',
     onclick: () => setState({ showSettings: false }),
@@ -161,7 +161,7 @@ function renderWalletPicker(walletManager) {
   const overlay = el('div', { className: 'modal-overlay', onclick: () => setState({ showWalletPicker: false }) });
   const modal = el('div', { className: 'modal', onclick: (e) => e.stopPropagation() });
 
-  modal.appendChild(el('h3', {}, 'Connect Wallet'));
+  modal.appendChild(el('h3', {}, 'Connect wallet'));
 
   const wallets = walletManager.getAvailableWallets();
 
@@ -226,7 +226,7 @@ function renderInstruction(ix, txMessage, ixIndex) {
 
   summary.appendChild(el('span', { className: 'ix-program-name' }, decoded.program));
 
-  const chevron = el('span', { className: 'ix-chevron' }, '\u25B8');
+  const chevron = icon('chevron', 'ix-chevron');
   summary.appendChild(chevron);
 
   card.appendChild(summary);
@@ -265,7 +265,7 @@ function renderInstruction(ix, txMessage, ixIndex) {
 
   // Raw hex
   if (ix.data && ix.data.length > 0) {
-    detail.appendChild(el('div', { className: 'ix-raw-label' }, 'Raw Data'));
+    detail.appendChild(el('div', { className: 'ix-raw-label' }, 'Raw data'));
     detail.appendChild(el('div', { className: 'raw-hex' }, toHex(ix.data)));
   }
 
@@ -277,7 +277,7 @@ function renderInstruction(ix, txMessage, ixIndex) {
     const isCollapsed = card.classList.contains('ix-collapsed');
     card.classList.toggle('ix-collapsed');
     detail.classList.toggle('hidden');
-    chevron.textContent = isCollapsed ? '\u25BE' : '\u25B8';
+    chevron.classList.toggle('is-open', isCollapsed);
   };
 
   return card;
@@ -306,14 +306,14 @@ function renderProposalDetail(state, proposalActions, handlers) {
 
     const progressHeader = el('div', { className: 'approval-header' });
     const progressLeft = el('div', { className: 'approval-header-left' });
-    progressLeft.appendChild(el('div', { className: 'detail-card-title' }, 'Approval Progress'));
+    progressLeft.appendChild(el('div', { className: 'detail-card-title' }, 'Approval progress'));
     const progressRight = el('div', { className: 'approval-header-right' });
     progressRight.appendChild(el('div', { className: 'threshold-count' },
       el('span', { className: 'threshold-current' }, String(approvedCount)),
       el('span', { className: 'threshold-sep' }, '/'),
       el('span', {}, String(threshold)),
     ));
-    const approvalChevron = el('span', { className: 'ix-chevron' }, '\u25B8');
+    const approvalChevron = icon('chevron', 'ix-chevron');
     progressRight.appendChild(approvalChevron);
     progressHeader.appendChild(progressLeft);
     progressHeader.appendChild(progressRight);
@@ -368,7 +368,7 @@ function renderProposalDetail(state, proposalActions, handlers) {
     progressHeader.onclick = (e) => {
       e.stopPropagation();
       memberSection.classList.toggle('hidden');
-      approvalChevron.textContent = memberSection.classList.contains('hidden') ? '\u25B8' : '\u25BE';
+      approvalChevron.classList.toggle('is-open', !memberSection.classList.contains('hidden'));
     };
 
     // Action buttons (inside the approval card)
@@ -402,7 +402,7 @@ function renderProposalDetail(state, proposalActions, handlers) {
       } else if (hasRejected) {
         approvalCard.appendChild(el('div', { className: 'voted-status voted-rejected' }, 'You have rejected this proposal'));
       } else if (!hasVotePermission && member) {
-        approvalCard.appendChild(el('div', { className: 'voted-status' }, 'You do not have Vote permission'));
+        approvalCard.appendChild(el('div', { className: 'voted-status' }, 'You do not have vote permission'));
       }
     }
 
@@ -420,7 +420,7 @@ function renderProposalDetail(state, proposalActions, handlers) {
   // Config transaction
   if (tx.type === 'config') {
     txCard.appendChild(el('div', { className: 'detail-card-header' },
-      el('div', { className: 'detail-card-title' }, 'Configuration Change'),
+      el('div', { className: 'detail-card-title' }, 'Configuration change'),
     ));
     for (const action of tx.actions) {
       const ixCard = el('div', { className: 'ix-card' });
@@ -481,13 +481,34 @@ function renderProposalDetail(state, proposalActions, handlers) {
   // Unknown transaction type
   if (tx.type === 'unknown') {
     txCard.appendChild(el('div', { className: 'detail-card-header' },
-      el('div', { className: 'detail-card-title' }, 'Unknown Transaction'),
+      el('div', { className: 'detail-card-title' }, 'Unknown transaction'),
     ));
     txCard.appendChild(el('div', { className: 'text-sm text-muted' }, 'Discriminator: ' + tx.discriminator));
     panel.appendChild(txCard);
   }
 
   return panel;
+}
+
+function renderFooter() {
+  const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const footer = el('div', { className: 'footer' });
+
+  const brand = el('div', { className: 'footer-brand' });
+  brand.appendChild(el('img', {
+    src: isDark ? 'wordmark-dark.svg' : 'wordmark-light.svg',
+    height: '15',
+    alt: 'Asymmetric Research',
+  }));
+  footer.appendChild(brand);
+
+  const links = el('div', { className: 'footer-links' });
+  links.appendChild(el('a', { href: 'https://asymmetric.re', target: '_blank', rel: 'noreferrer' }, 'asymmetric.re'));
+  links.appendChild(el('a', { href: 'https://x.com/asymmetric_re', target: '_blank', rel: 'noreferrer' }, '@asymmetric_re'));
+  footer.appendChild(links);
+
+  footer.appendChild(el('div', { className: 'footer-copy' }, '© 2026 Asymmetric Research'));
+  return footer;
 }
 
 // ─── Main Layout ───
@@ -500,11 +521,11 @@ export function renderLayout({ state, walletManager, proposalActions, onConnect,
   const headerLeft = el('div', { className: 'header-left' });
   const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
   headerLeft.appendChild(el('img', {
-    src: isDark ? 'logo-white.svg' : 'logo-black.svg',
+    src: isDark ? 'logo-dark.svg' : 'logo-light.svg',
     height: '20',
-    alt: 'Squads',
+    alt: 'Asymmetric Research',
   }));
-  headerLeft.appendChild(el('span', { className: 'logo-text' }, 'Verifier'));
+  headerLeft.appendChild(el('span', { className: 'logo-text' }, 'Multisig verifier'));
 
   // Inline stats in header when multisig is loaded
   if (state.multisig) {
@@ -540,7 +561,7 @@ export function renderLayout({ state, walletManager, proposalActions, onConnect,
     }, 'Connect'));
   }
 
-  headerRight.appendChild(el('button', { className: 'btn btn-ghost btn-sm', onclick: onSettings }, '\u2699'));
+  headerRight.appendChild(el('button', { className: 'btn btn-ghost btn-sm btn-settings', onclick: onSettings, title: 'Settings' }, icon('settings')));
   header.appendChild(headerRight);
   container.appendChild(header);
 
@@ -554,11 +575,13 @@ export function renderLayout({ state, walletManager, proposalActions, onConnect,
       placeholder: 'Enter multisig address...',
     });
     const addrHint = el('div', { className: 'address-bar-hint hidden' });
+    const actionIcon = icon('refresh');
+    const setActionIcon = (n) => { actionIcon.className = `icon icon--${n}`; };
     const actionBtn = el('button', {
       className: 'btn-refresh',
       onclick: onRefresh,
       title: 'Refresh',
-    }, '\u21bb');
+    }, actionIcon);
 
     function updateAddressBar() {
       const val = addrInput.value.trim();
@@ -567,7 +590,7 @@ export function renderLayout({ state, walletManager, proposalActions, onConnect,
 
       if (!isChanged) {
         addrHint.className = 'address-bar-hint hidden';
-        actionBtn.textContent = '\u21bb';
+        setActionIcon('refresh');
         actionBtn.title = 'Refresh';
         actionBtn.onclick = onRefresh;
         addressBar.classList.remove('address-bar--invalid', 'address-bar--changed');
@@ -579,14 +602,14 @@ export function renderLayout({ state, walletManager, proposalActions, onConnect,
         addrHint.className = 'address-bar-hint address-bar-hint--error';
         addressBar.classList.add('address-bar--invalid');
         addressBar.classList.remove('address-bar--changed');
-        actionBtn.textContent = '\u2192';
+        setActionIcon('arrow-right');
         actionBtn.title = 'Switch multisig';
         actionBtn.onclick = () => {};
       } else {
         addrHint.className = 'address-bar-hint hidden';
         addressBar.classList.remove('address-bar--invalid');
         addressBar.classList.add('address-bar--changed');
-        actionBtn.textContent = '\u2192';
+        setActionIcon('arrow-right');
         actionBtn.title = 'Switch multisig';
         actionBtn.onclick = () => {
           setState({ multisigAddress: val, multisig: null, proposals: [] });
@@ -614,7 +637,7 @@ export function renderLayout({ state, walletManager, proposalActions, onConnect,
 
 
   // Proposal list
-  if (state.loadingProposals) {
+  if (state.loadingProposals && state.proposals.length === 0) {
     container.appendChild(el('div', { className: 'loading' }, 'Loading proposals...'));
   } else if (state.proposals.length === 0 && state.multisig) {
     container.appendChild(el('div', { className: 'empty' }, 'No proposals found.'));
@@ -659,8 +682,10 @@ export function renderLayout({ state, walletManager, proposalActions, onConnect,
             const pda = encodeBase58(pdaBytes);
             window.open(getExplorerUrl('account', pda), '_blank');
           },
-        }, '\u2197');
+        }, icon('external'));
         right.appendChild(explorerBtn);
+      } else {
+        right.appendChild(el('span', { className: 'explorer-spacer' }));
       }
       row.appendChild(right);
       frag.appendChild(row);
@@ -680,7 +705,7 @@ export function renderLayout({ state, walletManager, proposalActions, onConnect,
           className: 'btn',
           disabled: state.loadingMore,
           onclick: onLoadMore,
-        }, state.loadingMore ? 'Loading...' : 'Load More')
+        }, state.loadingMore ? 'Loading...' : 'Load more')
       ));
     }
   }
@@ -693,6 +718,8 @@ export function renderLayout({ state, walletManager, proposalActions, onConnect,
   if (state.showWalletPicker) {
     container.appendChild(renderWalletPicker(walletManager));
   }
+
+  container.appendChild(renderFooter());
 
   return container;
 }

@@ -91,6 +91,16 @@ function render() {
   }));
 }
 
+let renderQueued = false;
+function scheduleRender() {
+  if (renderQueued) return;
+  renderQueued = true;
+  queueMicrotask(() => {
+    renderQueued = false;
+    render();
+  });
+}
+
 async function onSetupComplete(address, rpcUrl, explorerUrl) {
   // First, resolve what kind of account this is
   try {
@@ -133,10 +143,32 @@ function onSettings() {
 }
 
 async function onRefresh() {
-  settingsGuard.next();
-  setState({ lastUpdated: null });
-  await loadMultisig();
-  await loadProposals();
+  const state = getState();
+  if (!state.multisigAddress) return;
+
+  const spinner = document.querySelector('.btn-refresh .icon');
+  spinner?.classList.add('is-spinning');
+  const stop = () => spinner?.classList.remove('is-spinning');
+
+  const gen = settingsGuard.next();
+  try {
+    const multisig = await fetchMultisig(state.rpcUrl, state.multisigAddress);
+    if (settingsGuard.isStale(gen)) { stop(); return; }
+
+    const txIndex = Number(multisig.transactionIndex);
+    const start = Math.max(1, txIndex - 19);
+    const proposals = await fetchProposalBatch(state.rpcUrl, state.multisigAddress, start, txIndex);
+    if (settingsGuard.isStale(gen)) { stop(); return; }
+
+    for (const p of proposals) {
+      if (!proposalActions.has(String(p.index))) proposalActions.set(String(p.index), 'idle');
+    }
+    setState({ multisig, proposals, proposalCursor: start, lastUpdated: new Date(), error: null });
+  } catch (err) {
+    stop();
+    if (settingsGuard.isStale(gen)) return;
+    showToast('Failed to refresh: ' + err.message, 'error');
+  }
 }
 
 async function onLoadMore() {
@@ -210,7 +242,7 @@ async function executeVote(index, approve) {
   }
 
   proposalActions.set(key, 'refetching');
-  render();
+  scheduleRender();
 
   const gen = settingsGuard.next();
 
@@ -230,7 +262,7 @@ async function executeVote(index, approve) {
     }
 
     proposalActions.set(key, 'signing');
-    render();
+    scheduleRender();
 
     const account = walletManager.getAccount();
     const txBytes = await buildVoteTransaction(
@@ -245,7 +277,7 @@ async function executeVote(index, approve) {
     if (settingsGuard.isStale(gen)) return;
 
     proposalActions.set(key, 'confirming');
-    render();
+    scheduleRender();
     showToast('Transaction sent! Confirming...', 'info');
 
     // Refresh the proposal after a short delay
@@ -265,7 +297,7 @@ async function executeVote(index, approve) {
     }
   } finally {
     proposalActions.set(key, 'idle');
-    render();
+    scheduleRender();
   }
 }
 
@@ -342,7 +374,7 @@ async function boot() {
     setState({ walletAccount: account });
   });
 
-  init(render);
+  init(scheduleRender);
 
   const state = getState();
   if (state.multisigAddress) {

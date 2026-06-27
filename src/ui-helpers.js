@@ -134,3 +134,7 @@ export function fragment(...elements) {
   }
   return frag;
 }
+
+export function icon(name, extra = '') {
+  return el('span', { className: `icon icon--${name}${extra ? ' ' + extra : ''}`, 'aria-hidden': 'true' });
+}
