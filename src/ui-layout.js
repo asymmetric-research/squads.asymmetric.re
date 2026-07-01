@@ -51,7 +51,7 @@ export function renderSetup(onComplete) {
     ' initiative.',
   ));
   left.appendChild(el('p', { className: 'setup-about' },
-    'Independent hosting reduces single-point supply chain risk for multisig operators. The RPC endpoint and block explorer are pinned at the instance level — eliminating user-configurable inputs reduces the attack surface and ensures a consistent, trustworthy experience for every user of this instance.',
+    'Independent hosting reduces single-point supply chain risk for multisig operators.',
   ));
 
   const metaGrid = el('div', { className: 'setup-meta' });
