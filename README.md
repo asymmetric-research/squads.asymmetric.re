@@ -14,6 +14,7 @@ Reads multisig state directly from on-chain accounts, decodes proposal transacti
 - Wallet connect/disconnect via Wallet Standard (Phantom, Solflare, Backpack, etc.)
 - Approve/reject flow with transaction signing, confirmation tracking, and stale-state re-fetch
 - Inline address bar with live base58 validation and multisig switching
+- On-chain address resolution: paste a vault address (as shown in the Squads web UI), create key, or proposal/transaction PDA and it resolves to the multisig account — vault matches are confirmed by re-deriving the vault PDA from the candidate multisig
 - Explorer links to Solscan, Solana Explorer, or Helius XRAY
 - Dark/light mode via `prefers-color-scheme`
 - Build hash verification for reproducible deploys

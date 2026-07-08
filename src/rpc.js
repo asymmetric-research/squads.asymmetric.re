@@ -46,7 +46,7 @@ async function resolveAddressTableLookups(rpcUrl, message) {
   }
 }
 
-async function rpcCall(rpcUrl, method, params) {
+export async function rpcCall(rpcUrl, method, params) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), RPC_TIMEOUT);
 
@@ -89,83 +89,13 @@ async function rpcCall(rpcUrl, method, params) {
   }
 }
 
-function base64ToUint8Array(base64) {
+export function base64ToUint8Array(base64) {
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) {
     bytes[i] = binary.charCodeAt(i);
   }
   return bytes;
-}
-
-/**
- * Check if an address is a Squads multisig account, a vault, or something else.
- * If it's a vault, attempt to find the parent multisig.
- * Returns { type: 'multisig'|'vault'|'unknown', multisigAddress, data }
- */
-export async function resolveMultisigAddress(rpcUrl, inputAddress) {
-  const result = await rpcCall(rpcUrl, 'getAccountInfo', [
-    inputAddress,
-    { encoding: 'base64', commitment: 'confirmed' },
-  ]);
-
-  if (!result?.value) {
-    throw new Error('Account not found on-chain: ' + inputAddress);
-  }
-
-  const owner = result.value.owner;
-  const accountData = result.value.data;
-  const base64Str = Array.isArray(accountData) ? accountData[0] : accountData;
-  const dataLen = base64Str ? base64ToUint8Array(base64Str).length : 0;
-
-  // Case 1: Owned by Squads program with data — it's a multisig account
-  if (owner === 'SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf' && dataLen > 0) {
-    return { type: 'multisig', multisigAddress: inputAddress };
-  }
-
-  // Case 2: Owned by System Program (likely a vault or wallet)
-  // Try the Squads API to resolve vault → multisig PDA
-  if (owner === '11111111111111111111111111111111') {
-    try {
-      const apiResp = await fetch('https://v4-api.squads.so/multisig/' + inputAddress, {
-        signal: AbortSignal.timeout(5000),
-      });
-      if (apiResp.ok) {
-        const apiData = await apiResp.json();
-        if (apiData?.address) {
-          return {
-            type: 'multisig',
-            multisigAddress: apiData.address,
-            resolvedFrom: inputAddress,
-            message: 'Resolved vault → multisig PDA: ' + apiData.address,
-          };
-        }
-      }
-    } catch { /* API unavailable — fall through */ }
-
-    return {
-      type: 'wallet',
-      owner,
-      balance: result.value.lamports,
-      message: 'This address is a wallet (owned by System Program). If this is a Squads vault, the multisig PDA could not be resolved. Try entering the multisig PDA directly.',
-    };
-  }
-
-  // Case 3: Owned by smart-account-program
-  if (owner === 'SMRTzfY6DfH5ik3TKiyLFfXexV8uSG3d2UksSCYdunG' && dataLen > 0) {
-    return {
-      type: 'smart-account',
-      multisigAddress: inputAddress,
-      message: 'This is a Smart Account program multisig. This verifier currently only supports Squads v4 (SQDS4ep...). Smart Account support is planned.',
-    };
-  }
-
-  return {
-    type: 'unknown',
-    owner,
-    dataLen,
-    message: `Account is owned by ${owner} with ${dataLen} bytes of data. Expected a Squads v4 multisig account (owned by SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf).`,
-  };
 }
 
 /**
