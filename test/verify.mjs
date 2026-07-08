@@ -146,6 +146,14 @@ console.log('\n=== PDA Derivation ===');
   assertEq(bump, bump2, 'Bump is deterministic');
 }
 
+// Test: multisig PDA from create_key — pinned mainnet vector
+// (create_key 6tgds… → multisig 8Sr4r…, same vector as squadit)
+{
+  const { getMultisigPda } = await import('../src/squads.js');
+  const [pda] = await getMultisigPda('6tgdsFTVeXeBULCUtg48djFUk4Fsij8xtz7ZMzrNyyRo');
+  assertEq(encodeBase58(pda), '8Sr4rQJL2aQT3EL97mbrk1T9VMw4pCS2mxMPp2QBzHQq', 'getMultisigPda matches known mainnet multisig');
+}
+
 // Test: derive proposal PDA and verify it's different from transaction PDA
 {
   const { getTransactionPda, getProposalPda } = await import('../src/squads.js');

@@ -1,7 +1,8 @@
 import '../style.css';
 import { init, getState, setState } from './state.js';
 import { createWalletManager } from './wallet.js';
-import { fetchMultisig, fetchProposalBatch, fetchTransaction, resolveMultisigAddress } from './rpc.js';
+import { fetchMultisig, fetchProposalBatch, fetchTransaction } from './rpc.js';
+import { resolveMultisigAddress } from './resolver.js';
 import { deserializeMultisig, deserializeProposal, getProposalPda, getTransactionPda, PROPOSAL_DISCRIMINATOR, VAULT_TX_DISCRIMINATOR, CONFIG_TX_DISCRIMINATOR } from './squads.js';
 import { renderLayout, renderSetup, showToast } from './ui-layout.js';
 
@@ -90,14 +91,21 @@ function render() {
   }));
 }
 
+// Module-level guard: a re-render mid-resolution rebuilds the setup card with
+// a fresh (enabled) button, so the per-card disable alone can't prevent a
+// second concurrent resolution.
+let setupResolving = false;
+
 async function onSetupComplete(address) {
+  if (setupResolving) return;
+  setupResolving = true;
   const { rpcUrl } = getState();
   try {
     const resolved = await resolveMultisigAddress(rpcUrl, address);
 
     if (resolved.type === 'multisig') {
       if (resolved.resolvedFrom) {
-        showToast('Resolved vault to multisig: ' + resolved.multisigAddress.slice(0, 8) + '...', 'info');
+        showToast(resolved.message || ('Resolved to multisig: ' + resolved.multisigAddress.slice(0, 8) + '...'), 'info');
       }
       setState({ multisigAddress: resolved.multisigAddress });
       await loadMultisig();
@@ -107,6 +115,8 @@ async function onSetupComplete(address) {
     }
   } catch (err) {
     showToast('Failed to resolve address: ' + err.message, 'error');
+  } finally {
+    setupResolving = false;
   }
 }
 

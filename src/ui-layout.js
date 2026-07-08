@@ -5,6 +5,7 @@
 import { el, addrEl, formatSol, formatTimestamp, statusBadge, sanitize, fragment } from './ui-helpers.js';
 import { shortenAddress, toHex, getTransactionPda, encodeBase58 } from './squads.js';
 import { getState, setState, getExplorerUrl } from './state.js';
+import { resolveMultisigAddress } from './resolver.js';
 import { decodeInstruction, KNOWN_PROGRAMS } from './decode.js';
 import { isValidBase58 } from './squads.js';
 
@@ -14,6 +15,11 @@ const toastContainer = (() => {
   document.body.appendChild(c);
   return c;
 })();
+
+// Address-bar resolution state must survive re-renders (the bar is rebuilt on
+// every render, so a closure-scoped flag would reset and allow a second
+// concurrent resolution racing the first to setState + reload).
+let addressResolveInFlight = null;
 
 export function showToast(message, type = 'info') {
   const toast = el('div', { className: `toast toast-${type}` }, sanitize(message));
@@ -90,14 +96,22 @@ export function renderSetup(onComplete) {
 
   const submitBtn = el('button', {
     className: 'btn btn-primary mt-md',
-    onclick: () => {
+    onclick: async () => {
       const addr = addressInput.value.trim();
       if (!isValidBase58(addr)) {
         errorMsg.textContent = 'Invalid base58 address (must be 32 bytes)';
         errorMsg.className = 'error-inline visible';
         return;
       }
-      onComplete(addr);
+      errorMsg.className = 'error-inline';
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Resolving...';
+      try {
+        await onComplete(addr);
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Continue';
+      }
     },
   }, 'Continue');
 
@@ -546,11 +560,60 @@ export function renderLayout({ state, walletManager, proposalActions, onConnect,
       title: 'Refresh',
     }, '\u21bb');
 
+    async function switchMultisig(val) {
+      if (addressResolveInFlight) return;
+      addressResolveInFlight = val;
+      actionBtn.textContent = '…';
+      actionBtn.disabled = true;
+      addrHint.textContent = 'Resolving address...';
+      addrHint.className = 'address-bar-hint';
+
+      let switched = false;
+      try {
+        const resolved = await resolveMultisigAddress(state.rpcUrl, val);
+        if (resolved.type === 'multisig') {
+          switched = true;
+          addressResolveInFlight = null;
+          setState({ multisigAddress: resolved.multisigAddress, multisig: null, proposals: [] });
+          location.reload();
+          return;
+        }
+        const msg = resolved.message || 'Not a Squads v4 multisig.';
+        showToast(msg, 'error');
+        addrHint.textContent = msg;
+        addrHint.className = 'address-bar-hint address-bar-hint--error';
+      } catch (err) {
+        const msg = 'Failed to resolve: ' + err.message;
+        showToast(msg, 'error');
+        addrHint.textContent = msg;
+        addrHint.className = 'address-bar-hint address-bar-hint--error';
+      } finally {
+        addressResolveInFlight = null;
+        if (!switched) {
+          if (!document.contains(addrInput)) {
+            // Our address bar was re-rendered away mid-resolution; rebuild the
+            // live one so it doesn't stay stuck in the busy state.
+            setState({});
+          } else {
+            actionBtn.disabled = false;
+            const now = addrInput.value.trim();
+            if (now !== val) {
+              updateAddressBar(); // input edited mid-flight — re-sync button and hint
+            } else {
+              actionBtn.textContent = '→';
+              actionBtn.onclick = () => switchMultisig(now);
+            }
+          }
+        }
+      }
+    }
+
     function updateAddressBar() {
       const val = addrInput.value.trim();
       const isChanged = val !== state.multisigAddress;
       const isValid = isValidBase58(val);
 
+      if (addressResolveInFlight) return;
       if (!isChanged) {
         addrHint.className = 'address-bar-hint hidden';
         actionBtn.textContent = '\u21bb';
@@ -574,10 +637,7 @@ export function renderLayout({ state, walletManager, proposalActions, onConnect,
         addressBar.classList.add('address-bar--changed');
         actionBtn.textContent = '\u2192';
         actionBtn.title = 'Switch multisig';
-        actionBtn.onclick = () => {
-          setState({ multisigAddress: val, multisig: null, proposals: [] });
-          location.reload();
-        };
+        actionBtn.onclick = () => switchMultisig(val);
       }
     }
 
@@ -585,12 +645,24 @@ export function renderLayout({ state, walletManager, proposalActions, onConnect,
     addrInput.onkeydown = (e) => {
       if (e.key === 'Enter') {
         const val = addrInput.value.trim();
-        if (val !== state.multisigAddress && isValidBase58(val)) {
-          setState({ multisigAddress: val, multisig: null, proposals: [] });
-          location.reload();
+        // Unchanged values are allowed through so a stored non-multisig
+        // address (e.g. a vault saved before resolution existed) can be
+        // re-resolved in place.
+        if (isValidBase58(val)) {
+          switchMultisig(val);
         }
       }
     };
+
+    // A resolution may be in flight from before a re-render — restore the
+    // busy state so the fresh bar reflects it.
+    if (addressResolveInFlight) {
+      addrInput.value = addressResolveInFlight;
+      actionBtn.textContent = '…';
+      actionBtn.disabled = true;
+      addrHint.textContent = 'Resolving address...';
+      addrHint.className = 'address-bar-hint';
+    }
 
     addressBar.appendChild(addrInput);
     addressBar.appendChild(actionBtn);

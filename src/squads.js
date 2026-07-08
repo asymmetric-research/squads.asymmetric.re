@@ -239,6 +239,15 @@ function textToBytes(str) {
 
 const PROGRAM_ID_BYTES = decodeBase58(PROGRAM_ID);
 
+// Multisig PDA seeds are [SEED_PREFIX, SEED_MULTISIG, create_key] where SEED_PREFIX
+// and SEED_MULTISIG are both b"multisig", so the prefix appears twice.
+export async function getMultisigPda(createKey) {
+  return findProgramAddress(
+    [textToBytes('multisig'), textToBytes('multisig'), decodeBase58(createKey)],
+    PROGRAM_ID_BYTES,
+  );
+}
+
 export async function getMultisigVaultPda(multisigAddress, vaultIndex = 0) {
   return findProgramAddress(
     [textToBytes('multisig'), decodeBase58(multisigAddress), textToBytes('vault'), new Uint8Array([vaultIndex])],
@@ -298,11 +307,13 @@ export function deserializeMultisig(data) {
   const rentCollector = reader.readOption((r) => r.readPubkeyBase58());
   const bump = reader.readU8();
 
+  // The Squads v4 program does not cap member count (bounded only by account
+  // size), so use the generous default rather than an artificial limit.
   const members = reader.readVec((r) => {
     const key = r.readPubkeyBase58();
     const permissionsMask = r.readU8();
     return { key, permissionsMask, permissions: readPermissions(permissionsMask) };
-  }, 256);
+  }, 65535);
 
   return {
     createKey,
@@ -347,9 +358,10 @@ export function deserializeProposal(data) {
   const status = readProposalStatus(reader);
   const bump = reader.readU8();
 
-  const approved = reader.readVec((r) => r.readPubkeyBase58(), 256);
-  const rejected = reader.readVec((r) => r.readPubkeyBase58(), 256);
-  const cancelled = reader.readVec((r) => r.readPubkeyBase58(), 256);
+  // Vote vecs hold member keys; member count is uncapped (see deserializeMultisig).
+  const approved = reader.readVec((r) => r.readPubkeyBase58(), 65535);
+  const rejected = reader.readVec((r) => r.readPubkeyBase58(), 65535);
+  const cancelled = reader.readVec((r) => r.readPubkeyBase58(), 65535);
 
   return {
     multisig,
