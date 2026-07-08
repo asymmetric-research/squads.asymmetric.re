@@ -78,7 +78,7 @@ export function renderSetup(onComplete) {
 
   const addressField = el('div', { className: 'field' });
   addressField.appendChild(el('label', {}, 'Multisig Address'));
-  const addressInput = el('input', { type: 'text', placeholder: 'Enter base58 address...' });
+  const addressInput = el('input', { type: 'text', placeholder: 'Enter base58 address...', autofocus: true });
   addressField.appendChild(addressInput);
 
   const errorMsg = el('p', { className: 'error-inline' });
