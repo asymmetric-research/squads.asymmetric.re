@@ -907,6 +907,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 
 .setup-about a:hover { color: var(--accent); }
 
+.triton-link { display: inline-flex; align-items: center; gap: 4px; vertical-align: middle; }
+.triton-mark { display: inline-block; border-radius: 50%; vertical-align: middle; position: relative; top: -1px; }
+
 .setup-meta {
   display: grid;
   grid-template-columns: max-content 1fr;

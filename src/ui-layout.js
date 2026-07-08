@@ -51,7 +51,12 @@ export function renderSetup(onComplete) {
     ' initiative.',
   ));
   left.appendChild(el('p', { className: 'setup-about' },
-    'Independent hosting reduces single-point supply chain risk for multisig operators.',
+    'Independent hosting reduces single-point supply chain risk for multisig operators. RPC for this instance generously provided as a public good by ',
+    el('a', { href: 'https://triton.one', target: '_blank', rel: 'noopener noreferrer', className: 'triton-link' },
+      el('img', { src: 'triton-mark.svg', alt: 'Triton One', className: 'triton-mark', width: '18', height: '18' }),
+      'Triton One',
+    ),
+    '. ❤️',
   ));
 
   const metaGrid = el('div', { className: 'setup-meta' });
