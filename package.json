@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Minimal multisig transaction verifier for Squads Protocol v4",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "webpack serve --config webpack.config.js --mode development",
     "build": "webpack --config webpack.config.js --mode production",

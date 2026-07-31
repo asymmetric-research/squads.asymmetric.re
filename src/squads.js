@@ -2,42 +2,74 @@
  * Squads Protocol v4 — Borsh deserialization, PDA derivation, account parsing.
  * Hand-written from the IDL and Rust source. ZERO external dependencies.
  */
-import { findProgramAddress } from './crypto.js';
+import { findProgramAddress } from "./crypto.js";
 
 // Program ID — hardcoded to canonical Squads v4 deployment
-export const PROGRAM_ID = 'SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf';
+export const PROGRAM_ID = "SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf";
 
 // ─── Discriminators (sha256("account:<Name>")[0..8]) ───
 
 // All account discriminators from @sqds/multisig v2.1.4
-export const MULTISIG_DISCRIMINATOR      = new Uint8Array([0xe0, 0x74, 0x79, 0xba, 0x44, 0xa1, 0x4f, 0xec]);
-export const PROPOSAL_DISCRIMINATOR      = new Uint8Array([0x1a, 0x5e, 0xbd, 0xbb, 0x74, 0x88, 0x35, 0x21]);
-export const VAULT_TX_DISCRIMINATOR      = new Uint8Array([0xa8, 0xfa, 0xa2, 0x64, 0x51, 0x0e, 0xa2, 0xcf]);
-export const CONFIG_TX_DISCRIMINATOR     = new Uint8Array([0x5e, 0x08, 0x04, 0x23, 0x71, 0x8b, 0x8b, 0x70]);
-export const BATCH_DISCRIMINATOR         = new Uint8Array([0x9c, 0xc2, 0x46, 0x2c, 0x16, 0x58, 0x89, 0x2c]);
-export const VAULT_BATCH_TX_DISC         = new Uint8Array([0xc4, 0x79, 0x2e, 0x24, 0x0c, 0x13, 0xfc, 0x07]);
-export const SPENDING_LIMIT_DISCRIMINATOR = new Uint8Array([0x0a, 0xc9, 0x1b, 0xa0, 0xda, 0xc3, 0xde, 0x98]);
-export const PROGRAM_CONFIG_DISCRIMINATOR = new Uint8Array([0xc4, 0xd2, 0x5a, 0xe7, 0x90, 0x95, 0x8c, 0x3f]);
-export const TX_BUFFER_DISCRIMINATOR     = new Uint8Array([0x5a, 0x24, 0x23, 0xdb, 0x5d, 0xe1, 0x6e, 0x60]);
+export const MULTISIG_DISCRIMINATOR = new Uint8Array([
+  0xe0, 0x74, 0x79, 0xba, 0x44, 0xa1, 0x4f, 0xec,
+]);
+export const PROPOSAL_DISCRIMINATOR = new Uint8Array([
+  0x1a, 0x5e, 0xbd, 0xbb, 0x74, 0x88, 0x35, 0x21,
+]);
+export const VAULT_TX_DISCRIMINATOR = new Uint8Array([
+  0xa8, 0xfa, 0xa2, 0x64, 0x51, 0x0e, 0xa2, 0xcf,
+]);
+export const CONFIG_TX_DISCRIMINATOR = new Uint8Array([
+  0x5e, 0x08, 0x04, 0x23, 0x71, 0x8b, 0x8b, 0x70,
+]);
+export const BATCH_DISCRIMINATOR = new Uint8Array([
+  0x9c, 0xc2, 0x46, 0x2c, 0x16, 0x58, 0x89, 0x2c,
+]);
+export const VAULT_BATCH_TX_DISC = new Uint8Array([
+  0xc4, 0x79, 0x2e, 0x24, 0x0c, 0x13, 0xfc, 0x07,
+]);
+export const SPENDING_LIMIT_DISCRIMINATOR = new Uint8Array([
+  0x0a, 0xc9, 0x1b, 0xa0, 0xda, 0xc3, 0xde, 0x98,
+]);
+export const PROGRAM_CONFIG_DISCRIMINATOR = new Uint8Array([
+  0xc4, 0xd2, 0x5a, 0xe7, 0x90, 0x95, 0x8c, 0x3f,
+]);
+export const TX_BUFFER_DISCRIMINATOR = new Uint8Array([
+  0x5a, 0x24, 0x23, 0xdb, 0x5d, 0xe1, 0x6e, 0x60,
+]);
 
 // Instruction discriminators (sha256("global:<name>")[0..8])
-export const APPROVE_DISC  = new Uint8Array([0x90, 0x25, 0xa4, 0x88, 0xbc, 0xd8, 0x2a, 0xf8]);
-export const REJECT_DISC   = new Uint8Array([0xf3, 0x3e, 0x86, 0x9c, 0xe6, 0x6a, 0xf6, 0x87]);
-export const CREATE_DISC   = new Uint8Array([0xdc, 0x3c, 0x49, 0xe0, 0x1e, 0x6c, 0x4f, 0x9f]);
-export const ACTIVATE_DISC = new Uint8Array([0x0b, 0x22, 0x5c, 0xf8, 0x9a, 0x1b, 0x33, 0x6a]);
+export const APPROVE_DISC = new Uint8Array([
+  0x90, 0x25, 0xa4, 0x88, 0xbc, 0xd8, 0x2a, 0xf8,
+]);
+export const REJECT_DISC = new Uint8Array([
+  0xf3, 0x3e, 0x86, 0x9c, 0xe6, 0x6a, 0xf6, 0x87,
+]);
+export const CREATE_DISC = new Uint8Array([
+  0xdc, 0x3c, 0x49, 0xe0, 0x1e, 0x6c, 0x4f, 0x9f,
+]);
+export const ACTIVATE_DISC = new Uint8Array([
+  0x0b, 0x22, 0x5c, 0xf8, 0x9a, 0x1b, 0x33, 0x6a,
+]);
 
 // ─── BorshReader ───
 
 export class BorshReader {
   constructor(buffer) {
     this.buf = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
-    this.view = new DataView(this.buf.buffer, this.buf.byteOffset, this.buf.byteLength);
+    this.view = new DataView(
+      this.buf.buffer,
+      this.buf.byteOffset,
+      this.buf.byteLength,
+    );
     this.offset = 0;
   }
 
   _check(n) {
     if (this.offset + n > this.buf.length) {
-      throw new Error(`Borsh: attempted to read ${n} bytes at offset ${this.offset}, buffer length ${this.buf.length}`);
+      throw new Error(
+        `Borsh: attempted to read ${n} bytes at offset ${this.offset}, buffer length ${this.buf.length}`,
+      );
     }
   }
 
@@ -95,7 +127,8 @@ export class BorshReader {
 
   readVec(readFn, maxLen = 65535) {
     const len = this.readU32();
-    if (len > maxLen) throw new Error(`Borsh: vec length ${len} exceeds max ${maxLen}`);
+    if (len > maxLen)
+      throw new Error(`Borsh: vec length ${len} exceeds max ${maxLen}`);
     this._check(0); // ensure we haven't already overrun
     const result = [];
     for (let i = 0; i < len; i++) {
@@ -106,7 +139,8 @@ export class BorshReader {
 
   readVecU8(maxLen = 65535) {
     const len = this.readU32();
-    if (len > maxLen) throw new Error(`Borsh: byte vec length ${len} exceeds max ${maxLen}`);
+    if (len > maxLen)
+      throw new Error(`Borsh: byte vec length ${len} exceeds max ${maxLen}`);
     return this.readBytes(len);
   }
 
@@ -119,9 +153,12 @@ export class BorshReader {
 
   readString(maxLen = 1024) {
     const len = this.readU32();
-    if (len > maxLen) throw new Error(`Borsh: string length ${len} exceeds max ${maxLen}`);
+    if (len > maxLen)
+      throw new Error(`Borsh: string length ${len} exceeds max ${maxLen}`);
     this._check(len);
-    const s = new TextDecoder().decode(this.buf.slice(this.offset, this.offset + len));
+    const s = new TextDecoder().decode(
+      this.buf.slice(this.offset, this.offset + len),
+    );
     this.offset += len;
     return s;
   }
@@ -141,10 +178,11 @@ export class BorshReader {
 
 // ─── Base58 encoding ───
 
-const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+const BASE58_ALPHABET =
+  "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
 export function encodeBase58(bytes) {
-  if (bytes.length === 0) return '';
+  if (bytes.length === 0) return "";
   // Count leading zeros
   let zeros = 0;
   while (zeros < bytes.length && bytes[zeros] === 0) zeros++;
@@ -165,14 +203,14 @@ export function encodeBase58(bytes) {
     length = j;
   }
 
-  let result = '1'.repeat(zeros);
+  let result = "1".repeat(zeros);
   let started = false;
   for (let i = 0; i < b58.length; i++) {
     if (!started && b58[i] === 0) continue;
     started = true;
     result += BASE58_ALPHABET[b58[i]];
   }
-  return result || '1';
+  return result || "1";
 }
 
 export function decodeBase58(str) {
@@ -180,10 +218,10 @@ export function decodeBase58(str) {
 
   // Count leading '1's (they map to leading zero bytes)
   let zeros = 0;
-  while (zeros < str.length && str[zeros] === '1') zeros++;
+  while (zeros < str.length && str[zeros] === "1") zeros++;
 
   // Allocate enough space (base58 ≈ 0.73 * base256)
-  const size = Math.ceil(str.length * 733 / 1000) + 1;
+  const size = Math.ceil((str.length * 733) / 1000) + 1;
   const b256 = new Uint8Array(size);
 
   for (let i = zeros; i < str.length; i++) {
@@ -220,8 +258,8 @@ export function isValidBase58(str) {
 }
 
 export function shortenAddress(addr, chars = 4) {
-  if (!addr) return '';
-  return addr.slice(0, chars) + '...' + addr.slice(-chars);
+  if (!addr) return "";
+  return addr.slice(0, chars) + "..." + addr.slice(-chars);
 }
 
 // ─── PDA Derivation (zero-dependency, uses WebCrypto SHA-256 + BigInt curve math) ───
@@ -243,45 +281,80 @@ const PROGRAM_ID_BYTES = decodeBase58(PROGRAM_ID);
 // and SEED_MULTISIG are both b"multisig", so the prefix appears twice.
 export async function getMultisigPda(createKey) {
   return findProgramAddress(
-    [textToBytes('multisig'), textToBytes('multisig'), decodeBase58(createKey)],
+    [textToBytes("multisig"), textToBytes("multisig"), decodeBase58(createKey)],
     PROGRAM_ID_BYTES,
   );
 }
 
 export async function getMultisigVaultPda(multisigAddress, vaultIndex = 0) {
   return findProgramAddress(
-    [textToBytes('multisig'), decodeBase58(multisigAddress), textToBytes('vault'), new Uint8Array([vaultIndex])],
+    [
+      textToBytes("multisig"),
+      decodeBase58(multisigAddress),
+      textToBytes("vault"),
+      new Uint8Array([vaultIndex]),
+    ],
     PROGRAM_ID_BYTES,
   );
 }
 
 export async function getTransactionPda(multisigAddress, index) {
   return findProgramAddress(
-    [textToBytes('multisig'), decodeBase58(multisigAddress), textToBytes('transaction'), u64ToLeBytes(index)],
+    [
+      textToBytes("multisig"),
+      decodeBase58(multisigAddress),
+      textToBytes("transaction"),
+      u64ToLeBytes(index),
+    ],
     PROGRAM_ID_BYTES,
   );
 }
 
 export async function getProposalPda(multisigAddress, index) {
   return findProgramAddress(
-    [textToBytes('multisig'), decodeBase58(multisigAddress), textToBytes('transaction'), u64ToLeBytes(index), textToBytes('proposal')],
+    [
+      textToBytes("multisig"),
+      decodeBase58(multisigAddress),
+      textToBytes("transaction"),
+      u64ToLeBytes(index),
+      textToBytes("proposal"),
+    ],
     PROGRAM_ID_BYTES,
   );
 }
 
-export async function getBatchTransactionPda(multisigAddress, batchIndex, txIndex) {
+export async function getBatchTransactionPda(
+  multisigAddress,
+  batchIndex,
+  txIndex,
+) {
   const txIndexBytes = new Uint8Array(4);
   new DataView(txIndexBytes.buffer).setUint32(0, txIndex, true);
   return findProgramAddress(
-    [textToBytes('multisig'), decodeBase58(multisigAddress), textToBytes('transaction'), u64ToLeBytes(batchIndex), textToBytes('batch_transaction'), txIndexBytes],
+    [
+      textToBytes("multisig"),
+      decodeBase58(multisigAddress),
+      textToBytes("transaction"),
+      u64ToLeBytes(batchIndex),
+      textToBytes("batch_transaction"),
+      txIndexBytes,
+    ],
     PROGRAM_ID_BYTES,
   );
 }
 
 // ─── Account Deserializers ───
 
-const PROPOSAL_STATUS_NAMES = ['Draft', 'Active', 'Rejected', 'Approved', 'Executing', 'Executed', 'Cancelled'];
-const PERMISSION_NAMES = { 1: 'Initiate', 2: 'Vote', 4: 'Execute' };
+const PROPOSAL_STATUS_NAMES = [
+  "Draft",
+  "Active",
+  "Rejected",
+  "Approved",
+  "Executing",
+  "Executed",
+  "Cancelled",
+];
+const PERMISSION_NAMES = { 1: "Initiate", 2: "Vote", 4: "Execute" };
 
 function readPermissions(mask) {
   const perms = [];
@@ -295,7 +368,7 @@ export function deserializeMultisig(data) {
   const reader = new BorshReader(data);
 
   if (!reader.matchDiscriminator(MULTISIG_DISCRIMINATOR)) {
-    throw new Error('Invalid Multisig account discriminator');
+    throw new Error("Invalid Multisig account discriminator");
   }
 
   const createKey = reader.readPubkeyBase58();
@@ -312,7 +385,11 @@ export function deserializeMultisig(data) {
   const members = reader.readVec((r) => {
     const key = r.readPubkeyBase58();
     const permissionsMask = r.readU8();
-    return { key, permissionsMask, permissions: readPermissions(permissionsMask) };
+    return {
+      key,
+      permissionsMask,
+      permissions: readPermissions(permissionsMask),
+    };
   }, 65535);
 
   return {
@@ -330,7 +407,7 @@ export function deserializeMultisig(data) {
 
 function readProposalStatus(reader) {
   const tag = reader.readU8();
-  const name = PROPOSAL_STATUS_NAMES[tag] || 'Unknown';
+  const name = PROPOSAL_STATUS_NAMES[tag] || "Unknown";
 
   // Executing (tag 4) has NO timestamp payload
   if (tag === 4) {
@@ -350,7 +427,7 @@ export function deserializeProposal(data) {
   const reader = new BorshReader(data);
 
   if (!reader.matchDiscriminator(PROPOSAL_DISCRIMINATOR)) {
-    throw new Error('Invalid Proposal account discriminator');
+    throw new Error("Invalid Proposal account discriminator");
   }
 
   const multisig = reader.readPubkeyBase58();
@@ -385,7 +462,11 @@ function readAddressTableLookup(reader) {
   const accountKey = reader.readPubkeyBase58();
   const writableIndexes = reader.readVecU8(256);
   const readonlyIndexes = reader.readVecU8(256);
-  return { accountKey, writableIndexes: Array.from(writableIndexes), readonlyIndexes: Array.from(readonlyIndexes) };
+  return {
+    accountKey,
+    writableIndexes: Array.from(writableIndexes),
+    readonlyIndexes: Array.from(readonlyIndexes),
+  };
 }
 
 function readTransactionMessage(reader) {
@@ -410,7 +491,7 @@ export function deserializeVaultTransaction(data) {
   const reader = new BorshReader(data);
 
   if (!reader.matchDiscriminator(VAULT_TX_DISCRIMINATOR)) {
-    throw new Error('Invalid VaultTransaction account discriminator');
+    throw new Error("Invalid VaultTransaction account discriminator");
   }
 
   const multisig = reader.readPubkeyBase58();
@@ -423,7 +504,7 @@ export function deserializeVaultTransaction(data) {
   const message = readTransactionMessage(reader);
 
   return {
-    type: 'vault',
+    type: "vault",
     multisig,
     creator,
     index,
@@ -436,35 +517,77 @@ export function deserializeVaultTransaction(data) {
 }
 
 const CONFIG_ACTION_NAMES = [
-  'AddMember', 'RemoveMember', 'ChangeThreshold', 'SetTimeLock',
-  'AddSpendingLimit', 'RemoveSpendingLimit',
+  "AddMember",
+  "RemoveMember",
+  "ChangeThreshold",
+  "SetTimeLock",
+  "AddSpendingLimit",
+  "RemoveSpendingLimit",
+  "SetRentCollector",
 ];
 
-function readConfigAction(reader) {
+export function readConfigAction(reader) {
   const tag = reader.readU8();
   const name = CONFIG_ACTION_NAMES[tag] || `Unknown(${tag})`;
 
   switch (tag) {
-    case 0: { // AddMember
+    case 0: {
+      // AddMember
       const key = reader.readPubkeyBase58();
       const permissionsMask = reader.readU8();
-      return { name, member: { key, permissions: readPermissions(permissionsMask) } };
+      return {
+        name,
+        member: { key, permissions: readPermissions(permissionsMask) },
+      };
     }
-    case 1: { // RemoveMember
+    case 1: {
+      // RemoveMember
       const key = reader.readPubkeyBase58();
       return { name, key };
     }
-    case 2: { // ChangeThreshold
+    case 2: {
+      // ChangeThreshold
       const threshold = reader.readU16();
       return { name, threshold };
     }
-    case 3: { // SetTimeLock
+    case 3: {
+      // SetTimeLock
       const timeLock = reader.readU32();
       return { name, timeLock };
     }
+    case 4: {
+      // AddSpendingLimit
+      const createKey = reader.readPubkeyBase58();
+      const vaultIndex = reader.readU8();
+      const mint = reader.readPubkeyBase58();
+      const amount = reader.readU64();
+      const period = reader.readU8();
+      const members = reader.readVec((r) => r.readPubkeyBase58());
+      const destinations = reader.readVec((r) => r.readPubkeyBase58());
+      return {
+        name,
+        createKey,
+        vaultIndex,
+        mint,
+        amount: amount.toString(),
+        period,
+        members,
+        destinations,
+      };
+    }
+    case 5: {
+      // RemoveSpendingLimit
+      const spendingLimit = reader.readPubkeyBase58();
+      return { name, spendingLimit };
+    }
+    case 6: {
+      // SetRentCollector
+      const has = reader.readU8();
+      const rentCollector = has ? reader.readPubkeyBase58() : null;
+      return { name, rentCollector };
+    }
     default: {
-      // For complex actions (AddSpendingLimit etc.), return raw info
-      return { name, raw: true };
+      throw new Error(`Unknown ConfigAction tag: ${tag}`);
     }
   }
 }
@@ -473,7 +596,7 @@ export function deserializeConfigTransaction(data) {
   const reader = new BorshReader(data);
 
   if (!reader.matchDiscriminator(CONFIG_TX_DISCRIMINATOR)) {
-    throw new Error('Invalid ConfigTransaction account discriminator');
+    throw new Error("Invalid ConfigTransaction account discriminator");
   }
 
   const multisig = reader.readPubkeyBase58();
@@ -481,15 +604,23 @@ export function deserializeConfigTransaction(data) {
   const index = reader.readU64();
   const bump = reader.readU8();
 
-  let actions;
-  try {
-    actions = reader.readVec(readConfigAction, 32);
-  } catch {
-    actions = [{ name: 'UnparseableActions', raw: true }];
+  const actions = [];
+  const numActions = reader.readU32();
+  for (let i = 0; i < numActions; i++) {
+    try {
+      actions.push(readConfigAction(reader));
+    } catch (err) {
+      actions.push({
+        name: "UnparseableAction",
+        error: err.message,
+        raw: true,
+      });
+      break; // Stop parsing if we hit a desync
+    }
   }
 
   return {
-    type: 'config',
+    type: "config",
     multisig,
     creator,
     index,
@@ -503,7 +634,7 @@ export function deserializeVaultBatchTransaction(data) {
   const reader = new BorshReader(data);
 
   if (!reader.matchDiscriminator(VAULT_BATCH_TX_DISC)) {
-    throw new Error('Invalid VaultBatchTransaction account discriminator');
+    throw new Error("Invalid VaultBatchTransaction account discriminator");
   }
 
   const bump = reader.readU8();
@@ -511,8 +642,8 @@ export function deserializeVaultBatchTransaction(data) {
   const message = readTransactionMessage(reader);
 
   return {
-    type: 'vault',
-    subtype: 'batch',
+    type: "vault",
+    subtype: "batch",
     bump,
     ephemeralSignerBumps: Array.from(ephemeralSignerBumps),
     message,
@@ -524,7 +655,7 @@ export function deserializeBatch(data) {
   const reader = new BorshReader(data);
 
   if (!reader.matchDiscriminator(BATCH_DISCRIMINATOR)) {
-    throw new Error('Invalid Batch account discriminator');
+    throw new Error("Invalid Batch account discriminator");
   }
 
   const multisig = reader.readPubkeyBase58();
@@ -537,7 +668,7 @@ export function deserializeBatch(data) {
   const executedTransactionIndex = reader.readU32();
 
   return {
-    type: 'batch',
+    type: "batch",
     multisig,
     creator,
     index,
@@ -553,7 +684,7 @@ export function deserializeBatch(data) {
  * Detect transaction type by discriminator and deserialize accordingly.
  */
 export function deserializeTransaction(data) {
-  if (data.length < 8) throw new Error('Transaction data too short');
+  if (data.length < 8) throw new Error("Transaction data too short");
 
   const disc = data.slice(0, 8);
 
@@ -572,7 +703,7 @@ export function deserializeTransaction(data) {
 
   // Unknown type — return minimal info
   return {
-    type: 'unknown',
+    type: "unknown",
     discriminator: toHex(disc),
   };
 }
@@ -586,5 +717,7 @@ function arrayEqual(a, b) {
 }
 
 export function toHex(bytes) {
-  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join(' ');
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join(" ");
 }
