@@ -7,13 +7,16 @@ Reads multisig state directly from on-chain accounts, decodes proposal transacti
 ## Features
 
 - Deserializes all Squads v4 account types (Multisig, Proposal, VaultTransaction, ConfigTransaction, Batch, VaultBatchTransaction)
-- Decodes SPL Token, Token-2022, System Program, Compute Budget, and Associated Token instructions into human-readable summaries
+- Decodes SPL Token, Token-2022, Associated Token, System, Stake, Compute Budget, Address Lookup Table, and BPF Upgradeable Loader instructions into human-readable summaries — control-changing operations (program upgrades, authority changes, token approvals) are flagged as critical
+- On-demand on-chain program inspection for unrecognized programs: upgradeable vs immutable, upgrade authority, last-deploy slot
+- Anchor discriminator hints and user-local program labels for everything else
 - Resolves Address Lookup Tables for complete account display
 - Collapsible instruction cards with accounts table, flags (writable/signer), and raw hex
 - Approval progress bar with collapsible member grid showing vote status per member
 - Wallet connect/disconnect via Wallet Standard (Phantom, Solflare, Backpack, etc.)
 - Approve/reject flow with transaction signing, confirmation tracking, and stale-state re-fetch
 - Inline address bar with live base58 validation and multisig switching
+- Lockdown mode: a per-wallet view of explicitly pinned squads, each verified against the on-chain member roster before pinning and re-verified on every load — pinning is refused unless the connected wallet is a member
 - On-chain address resolution: paste a vault address (as shown in the Squads web UI), create key, or proposal/transaction PDA and it resolves to the multisig account — vault matches are confirmed by re-deriving the vault PDA from the candidate multisig
 - Explorer links to Solscan, Solana Explorer, or Helius XRAY
 - Dark/light mode via `prefers-color-scheme`
@@ -45,6 +48,13 @@ squads.asymmetric.re/
 ├── src/
 │   ├── main.js                 # Boot, state wiring, event handlers
 │   ├── state.js                # Frozen immutable state + localStorage persistence
+│   ├── pins.js                 # Per-wallet pin store, membership check, boot-mode selection
+│   ├── decode-common.js        # Shared decoder helpers (amount/account formatting)
+│   ├── decoders-spl.js         # SPL Token / Token-2022 / ATA instruction decoders
+│   ├── decoders-native.js      # System, BPF loader, Stake, ComputeBudget, ALT decoders
+│   ├── program-info.js         # On-demand loader-account inspection (session-cached)
+│   ├── program-labels.js       # User-local program nicknames (localStorage)
+│   ├── ui-lockdown.js          # Lockdown views — squad grid, add-squad flow, mode toggle
 │   ├── rpc.js                  # JSON-RPC fetch wrapper, ALT resolution, batch fetching
 │   ├── squads.js               # Borsh reader, discriminators, PDA derivation, deserialization
 │   ├── crypto.js               # SHA-256 (Web Crypto), Ed25519 curve check, findProgramAddress

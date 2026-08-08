@@ -6,8 +6,12 @@ import { el, addrEl, formatSol, formatTimestamp, statusBadge, sanitize, fragment
 import { shortenAddress, toHex, getTransactionPda, encodeBase58 } from './squads.js';
 import { getState, setState, getExplorerUrl } from './state.js';
 import { resolveMultisigAddress } from './resolver.js';
-import { decodeInstruction, KNOWN_PROGRAMS } from './decode.js';
+import { decodeInstruction } from './decode.js';
+import { inspectProgram } from './program-info.js';
+import { setProgramLabel } from './program-labels.js';
 import { isValidBase58 } from './squads.js';
+import { renderModeToggle, renderOpenBanner } from './ui-lockdown.js';
+import { hasAnyPins } from './pins.js';
 
 // Toast system
 const toastContainer = (() => {
@@ -29,9 +33,15 @@ export function showToast(message, type = 'info') {
 
 // ─── Setup View ───
 
-export function renderSetup(onComplete) {
+export function renderSetup(onComplete, { state, onSwitchMode } = {}) {
   const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
   const wrapper = el('div', { className: 'setup-wrapper' });
+
+  if (state && onSwitchMode && hasAnyPins()) {
+    const modeBar = el('div', { className: 'setup-mode-bar' });
+    modeBar.appendChild(renderModeToggle(state, onSwitchMode));
+    wrapper.appendChild(modeBar);
+  }
 
 
   // Main content
@@ -88,7 +98,7 @@ export function renderSetup(onComplete) {
   card.appendChild(el('p', {}, 'Enter your multisig address to get started.'));
 
   const addressField = el('div', { className: 'field' });
-  addressField.appendChild(el('label', {}, 'Multisig Address'));
+  addressField.appendChild(el('label', {}, 'Multisig address'));
   const addressInput = el('input', { type: 'text', placeholder: 'Enter base58 address...', autofocus: true });
   addressField.appendChild(addressInput);
 
@@ -153,11 +163,11 @@ function renderSettingsModal(state) {
 
 // ─── Wallet Picker Modal ───
 
-function renderWalletPicker(walletManager) {
+export function renderWalletPicker(walletManager) {
   const overlay = el('div', { className: 'modal-overlay', onclick: () => setState({ showWalletPicker: false }) });
   const modal = el('div', { className: 'modal', onclick: (e) => e.stopPropagation() });
 
-  modal.appendChild(el('h3', {}, 'Connect Wallet'));
+  modal.appendChild(el('h3', {}, 'Connect wallet'));
 
   const wallets = walletManager.getAvailableWallets();
 
@@ -203,24 +213,37 @@ function renderInstruction(ix, txMessage, ixIndex) {
 
   const card = el('div', { className: 'ix-card ix-collapsed' });
 
-  // Clickable summary header
-  const knownClass = decoded.type === 'decoded' ? 'known' : (decoded.isKnown ? 'known' : 'unknown');
   const summary = el('div', { className: 'ix-summary' });
-
   const summaryLeft = el('div', { className: 'ix-summary-left' });
-  summaryLeft.appendChild(el('span', { className: `ix-badge ${knownClass}` }, decoded.type === 'decoded' ? 'Decoded' : (decoded.isKnown ? 'Known' : 'Unknown')));
+
+  let badgeClass, badgeText;
+  if (decoded.type === 'decoded' && decoded.severity === 'critical') {
+    badgeClass = 'critical'; badgeText = 'Critical';
+  } else if (decoded.type === 'decoded') {
+    badgeClass = 'known'; badgeText = 'Decoded';
+  } else if (decoded.isKnown) {
+    badgeClass = 'known'; badgeText = 'Known';
+  } else {
+    badgeClass = 'unknown'; badgeText = 'Unknown';
+  }
+  summaryLeft.appendChild(el('span', { className: `ix-badge ${badgeClass}` }, badgeText));
 
   const summaryText = el('span', { className: 'ix-summary-text' });
   if (decoded.action) {
     summaryText.appendChild(el('strong', {}, decoded.action + ': '));
-    summaryText.appendChild(el('span', {}, decoded.description));
+    summaryText.appendChild(el('span', {}, sanitize(decoded.description)));
+  } else if (decoded.anchorHint) {
+    summaryText.appendChild(el('span', { className: 'ix-anchor-hint' },
+      `anchor? ${decoded.anchorHint.discriminator} · ${decoded.anchorHint.argBytes} bytes args`));
+  } else if (decoded.description) {
+    summaryText.appendChild(el('span', {}, sanitize(decoded.description)));
   } else {
     summaryText.appendChild(el('span', {}, `Instruction ${ixIndex + 1}`));
   }
   summaryLeft.appendChild(summaryText);
   summary.appendChild(summaryLeft);
 
-  summary.appendChild(el('span', { className: 'ix-program-name' }, decoded.program));
+  summary.appendChild(el('span', { className: 'ix-program-name', title: decoded.programId }, sanitize(decoded.program)));
 
   const chevron = el('span', { className: 'ix-chevron' }, '\u25B8');
   summary.appendChild(chevron);
@@ -229,6 +252,84 @@ function renderInstruction(ix, txMessage, ixIndex) {
 
   // Expandable detail
   const detail = el('div', { className: 'ix-detail hidden' });
+
+  // Decoded fields
+  if (decoded.details) {
+    const grid = el('div', { className: 'ix-details' });
+    for (const [key, value] of Object.entries(decoded.details)) {
+      grid.appendChild(el('span', { className: 'ix-details-key' }, key));
+      const v = String(value);
+      grid.appendChild(el('span', { className: 'ix-details-value' },
+        isValidBase58(v) ? addrEl(v) : sanitize(v)));
+    }
+    detail.appendChild(grid);
+  }
+
+  // Unknown program: on-demand inspection + local label
+  if (!decoded.isKnown) {
+    const tools = el('div', { className: 'ix-tools' });
+
+    const inspectResult = el('div', { className: 'ix-inspect-result hidden' });
+    const inspectBtn = el('button', {
+      className: 'btn btn-sm',
+      onclick: async (e) => {
+        e.stopPropagation();
+        inspectBtn.disabled = true;
+        inspectBtn.textContent = 'Inspecting...';
+        try {
+          const info = await inspectProgram(getState().rpcUrl, decoded.programId);
+          inspectResult.textContent = '';
+          inspectResult.className = 'ix-inspect-result';
+          if (info.kind === 'upgradeable') {
+            inspectResult.appendChild(el('div', { className: info.upgradeAuthority ? 'ix-inspect-warn' : 'ix-inspect-ok' },
+              info.upgradeAuthority ? 'Upgradeable program' : 'Immutable program (no upgrade authority)'));
+            if (info.upgradeAuthority) {
+              inspectResult.appendChild(el('div', {}, 'Upgrade authority: ', addrEl(info.upgradeAuthority)));
+            }
+            inspectResult.appendChild(el('div', { className: 'text-muted' }, `Last deployed at slot ${info.slot}`));
+          } else if (info.kind === 'loader-v2') {
+            inspectResult.appendChild(el('div', { className: 'ix-inspect-ok' }, 'Non-upgradeable program (loader v2)'));
+          } else if (info.kind === 'not-found') {
+            inspectResult.appendChild(el('div', { className: 'ix-inspect-warn' }, 'Account not found on-chain'));
+          } else if (info.kind === 'not-program') {
+            inspectResult.appendChild(el('div', { className: 'ix-inspect-warn' }, 'Not an executable program'));
+          } else {
+            inspectResult.appendChild(el('div', {}, 'Owned by ', addrEl(info.owner)));
+          }
+        } catch (err) {
+          inspectResult.className = 'ix-inspect-result';
+          inspectResult.textContent = 'Inspection failed: ' + err.message;
+        } finally {
+          if (document.contains(inspectBtn)) {
+            inspectBtn.disabled = false;
+            inspectBtn.textContent = 'Inspect program';
+          }
+        }
+      },
+    }, 'Inspect program');
+    tools.appendChild(inspectBtn);
+
+    const labelInput = el('input', {
+      className: 'ix-label-input',
+      type: 'text',
+      maxlength: '32',
+      placeholder: 'Local label for this program...',
+      onclick: (e) => e.stopPropagation(),
+    });
+    const labelBtn = el('button', {
+      className: 'btn btn-ghost btn-sm',
+      onclick: (e) => {
+        e.stopPropagation();
+        setProgramLabel(decoded.programId, labelInput.value);
+        setState({}); // re-render; label resolution picks it up
+      },
+    }, 'Save label');
+    tools.appendChild(labelInput);
+    tools.appendChild(labelBtn);
+
+    detail.appendChild(tools);
+    detail.appendChild(inspectResult);
+  }
 
   // Accounts table
   if (ix.accountIndexes.length > 0) {
@@ -261,7 +362,7 @@ function renderInstruction(ix, txMessage, ixIndex) {
 
   // Raw hex
   if (ix.data && ix.data.length > 0) {
-    detail.appendChild(el('div', { className: 'ix-raw-label' }, 'Raw Data'));
+    detail.appendChild(el('div', { className: 'ix-raw-label' }, 'Raw data'));
     detail.appendChild(el('div', { className: 'raw-hex' }, toHex(ix.data)));
   }
 
@@ -302,7 +403,7 @@ function renderProposalDetail(state, proposalActions, handlers) {
 
     const progressHeader = el('div', { className: 'approval-header' });
     const progressLeft = el('div', { className: 'approval-header-left' });
-    progressLeft.appendChild(el('div', { className: 'detail-card-title' }, 'Approval Progress'));
+    progressLeft.appendChild(el('div', { className: 'detail-card-title' }, 'Approval progress'));
     const progressRight = el('div', { className: 'approval-header-right' });
     progressRight.appendChild(el('div', { className: 'threshold-count' },
       el('span', { className: 'threshold-current' }, String(approvedCount)),
@@ -416,7 +517,7 @@ function renderProposalDetail(state, proposalActions, handlers) {
   // Config transaction
   if (tx.type === 'config') {
     txCard.appendChild(el('div', { className: 'detail-card-header' },
-      el('div', { className: 'detail-card-title' }, 'Configuration Change'),
+      el('div', { className: 'detail-card-title' }, 'Configuration change'),
     ));
     for (const action of tx.actions) {
       const ixCard = el('div', { className: 'ix-card' });
@@ -477,7 +578,7 @@ function renderProposalDetail(state, proposalActions, handlers) {
   // Unknown transaction type
   if (tx.type === 'unknown') {
     txCard.appendChild(el('div', { className: 'detail-card-header' },
-      el('div', { className: 'detail-card-title' }, 'Unknown Transaction'),
+      el('div', { className: 'detail-card-title' }, 'Unknown transaction'),
     ));
     txCard.appendChild(el('div', { className: 'text-sm text-muted' }, 'Discriminator: ' + tx.discriminator));
     panel.appendChild(txCard);
@@ -488,7 +589,7 @@ function renderProposalDetail(state, proposalActions, handlers) {
 
 // ─── Main Layout ───
 
-export function renderLayout({ state, walletManager, proposalActions, onConnect, onDisconnect, onRefresh, onLoadMore, onExpandProposal, onApprove, onReject }) {
+export function renderLayout({ state, walletManager, proposalActions, onConnect, onDisconnect, onRefresh, onLoadMore, onExpandProposal, onApprove, onReject, onSwitchMode, onStickyOpenChange, onBackToSquads }) {
   const container = document.createDocumentFragment();
 
   // Header (sticky)
@@ -501,6 +602,14 @@ export function renderLayout({ state, walletManager, proposalActions, onConnect,
     alt: 'Squads',
   }));
   headerLeft.appendChild(el('span', { className: 'logo-text' }, 'Verifier'));
+
+  // Lockdown detail: show the pin's nickname (or shortened address) so the
+  // signer always sees which of their squads they are looking at
+  if (state.mode === 'lockdown' && state.lockdownActive) {
+    const pin = state.pinned.find((p) => p.multisigAddress === state.lockdownActive);
+    headerLeft.appendChild(el('span', { className: 'header-squad-label', title: state.lockdownActive },
+      pin?.label ? sanitize(pin.label) : shortenAddress(state.lockdownActive)));
+  }
 
   // Inline stats in header when multisig is loaded
   if (state.multisig) {
@@ -521,6 +630,8 @@ export function renderLayout({ state, walletManager, proposalActions, onConnect,
 
   const headerRight = el('div', { className: 'header-right' });
 
+  if (onSwitchMode) headerRight.appendChild(renderModeToggle(state, onSwitchMode));
+
   if (state.walletAccount) {
     const walletInfo = walletManager.getWalletInfo();
     const walletBtn = el('button', { className: 'btn btn-sm btn-wallet', onclick: onDisconnect });
@@ -536,16 +647,28 @@ export function renderLayout({ state, walletManager, proposalActions, onConnect,
     }, 'Connect'));
   }
 
-  headerRight.appendChild(el('button', {
-    className: 'btn btn-ghost btn-sm',
-    onclick: () => setState({ multisigAddress: '', multisig: null, proposals: [] }),
-    title: 'Switch multisig',
-  }, '\u2190 Change'));
+  if (state.mode !== 'lockdown') {
+    headerRight.appendChild(el('button', {
+      className: 'btn btn-ghost btn-sm',
+      onclick: () => setState({ multisigAddress: '', multisig: null, proposals: [] }),
+      title: 'Switch multisig',
+    }, '\u2190 Change'));
+  } else {
+    headerRight.appendChild(el('button', {
+      className: 'btn btn-ghost btn-sm',
+      onclick: onBackToSquads,
+      title: 'Back to your squads',
+    }, '\u2190 My squads'));
+  }
   header.appendChild(headerRight);
   container.appendChild(header);
 
-  // Address bar (always rendered)
-  {
+  if (state.mode === 'open' && hasAnyPins()) {
+    container.appendChild(renderOpenBanner(state, onStickyOpenChange));
+  }
+
+  // Address bar (open mode only — lockdown must not offer arbitrary address entry)
+  if (state.mode !== 'lockdown') {
     const addressBar = el('div', { className: 'address-bar' });
     const addrInput = el('input', {
       className: 'address-bar-input',
@@ -738,7 +861,7 @@ export function renderLayout({ state, walletManager, proposalActions, onConnect,
           className: 'btn',
           disabled: state.loadingMore,
           onclick: onLoadMore,
-        }, state.loadingMore ? 'Loading...' : 'Load More')
+        }, state.loadingMore ? 'Loading...' : 'Load more')
       ));
     }
   }

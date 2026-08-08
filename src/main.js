@@ -1,10 +1,12 @@
 import '../style.css';
 import { init, getState, setState } from './state.js';
 import { createWalletManager } from './wallet.js';
-import { fetchMultisig, fetchProposalBatch, fetchTransaction } from './rpc.js';
+import { fetchMultisig, fetchMultisigBatch, fetchProposalBatch, fetchTransaction } from './rpc.js';
 import { resolveMultisigAddress } from './resolver.js';
-import { deserializeMultisig, deserializeProposal, getProposalPda, getTransactionPda, PROPOSAL_DISCRIMINATOR, VAULT_TX_DISCRIMINATOR, CONFIG_TX_DISCRIMINATOR } from './squads.js';
-import { renderLayout, renderSetup, showToast } from './ui-layout.js';
+import { deserializeMultisig, deserializeProposal, getProposalPda, getTransactionPda, shortenAddress, PROPOSAL_DISCRIMINATOR, VAULT_TX_DISCRIMINATOR, CONFIG_TX_DISCRIMINATOR } from './squads.js';
+import { renderLayout, renderSetup, showToast, renderWalletPicker } from './ui-layout.js';
+import { renderLockdownHome } from './ui-lockdown.js';
+import { getPins, addPin, removePin, findMember } from './pins.js';
 
 // Generation guards for async race condition protection
 function createGuard() {
@@ -56,7 +58,9 @@ document.addEventListener('visibilitychange', () => {
 
 // Cross-tab localStorage detection
 window.addEventListener('storage', (e) => {
-  if (['multisigAddress'].includes(e.key)) {
+  if (['multisigAddress', 'pinnedSquads'].includes(e.key)) {
+    const anyActionInProgress = [...proposalActions.values()].some(s => s !== 'idle');
+    if (anyActionInProgress) return;
     showToast('Settings changed in another tab. Reloading...', 'info');
     setTimeout(() => location.reload(), 1500);
   }
@@ -71,13 +75,7 @@ function render() {
   root.textContent = '';
   root.className = '';
 
-  if (!state.multisigAddress || !state.rpcUrl) {
-    root.appendChild(renderSetup(onSetupComplete));
-    return;
-  }
-
-  root.className = 'app';
-  root.appendChild(renderLayout({
+  const layoutHandlers = {
     state,
     walletManager,
     proposalActions,
@@ -88,7 +86,39 @@ function render() {
     onExpandProposal,
     onApprove,
     onReject,
-  }));
+    onSwitchMode,
+    onStickyOpenChange,
+    onBackToSquads,
+  };
+
+  if (state.mode === 'lockdown') {
+    root.className = 'app';
+    if (!state.lockdownActive) {
+      root.appendChild(renderLockdownHome({
+        state,
+        walletManager,
+        onAddPin,
+        onUnpin,
+        onOpenSquad,
+        onRetryPins: loadPins,
+        onSwitchMode,
+      }));
+      if (state.showWalletPicker) {
+        root.appendChild(renderWalletPicker(walletManager));
+      }
+      return;
+    }
+    root.appendChild(renderLayout(layoutHandlers));
+    return;
+  }
+
+  if (!state.multisigAddress || !state.rpcUrl) {
+    root.appendChild(renderSetup(onSetupComplete, { state, onSwitchMode }));
+    return;
+  }
+
+  root.className = 'app';
+  root.appendChild(renderLayout(layoutHandlers));
 }
 
 // Module-level guard: a re-render mid-resolution rebuilds the setup card with
@@ -325,6 +355,99 @@ async function loadProposals() {
   }
 }
 
+// ─── Lockdown mode ───
+
+async function loadPins() {
+  const state = getState();
+  const wallet = state.walletAccount?.address;
+  if (!wallet) return;
+
+  const pins = getPins(wallet);
+  setState({ loadingPins: true, pinsError: null });
+
+  try {
+    const results = await fetchMultisigBatch(state.rpcUrl, pins.map((p) => p.multisigAddress));
+    // Wallet may have changed while fetching — results belong to `wallet`
+    if (getState().walletAccount?.address !== wallet) return;
+
+    const pinned = pins.map((p, i) => ({
+      ...p,
+      multisig: results[i].multisig,
+      error: results[i].error,
+      // Re-verified on every load: the on-chain roster is the source of truth
+      membership: results[i].multisig ? findMember(results[i].multisig, wallet) : null,
+    }));
+    setState({ pinned, loadingPins: false });
+  } catch (err) {
+    if (getState().walletAccount?.address !== wallet) return;
+    setState({ loadingPins: false, pinsError: 'Failed to load squads: ' + err.message });
+  }
+}
+
+async function onAddPin(input, label) {
+  const state = getState();
+  const wallet = state.walletAccount?.address;
+  if (!wallet) {
+    showToast('Connect your wallet first.', 'error');
+    return false;
+  }
+
+  // Never pin unverified: resolve, fetch, and membership-check must all
+  // succeed before the pin is written.
+  const resolved = await resolveMultisigAddress(state.rpcUrl, input);
+  if (resolved.type !== 'multisig') {
+    showToast(resolved.message || 'Not a Squads v4 multisig.', 'error');
+    return false;
+  }
+
+  const multisig = await fetchMultisig(state.rpcUrl, resolved.multisigAddress);
+  const member = findMember(multisig, wallet);
+  if (!member) {
+    showToast('Refused: wallet ' + shortenAddress(wallet) + ' is not a member of this multisig.', 'error');
+    return false;
+  }
+
+  const { persisted } = addPin(wallet, { multisigAddress: resolved.multisigAddress, label });
+  if (!persisted) {
+    showToast('Pinned for this session, but saving to browser storage failed.', 'error');
+  } else if (resolved.resolvedFrom) {
+    showToast('Resolved to multisig: ' + resolved.multisigAddress.slice(0, 8) + '…', 'info');
+  }
+  await loadPins();
+  return true;
+}
+
+function onUnpin(multisigAddress) {
+  const wallet = getState().walletAccount?.address;
+  if (!wallet) return;
+  removePin(wallet, multisigAddress);
+  loadPins();
+}
+
+async function onOpenSquad(multisigAddress) {
+  setState({ lockdownActive: multisigAddress, multisigAddress, multisig: null, proposals: [], expandedProposal: null, expandedTransaction: null });
+  await loadMultisig();
+  await loadProposals();
+}
+
+function onBackToSquads() {
+  settingsGuard.next();
+  setState({ lockdownActive: null, multisig: null, proposals: [], expandedProposal: null, expandedTransaction: null, error: null });
+  loadPins();
+}
+
+function onSwitchMode(mode) {
+  settingsGuard.next();
+  setState({ mode, lockdownActive: null, expandedProposal: null, expandedTransaction: null });
+  if (mode === 'lockdown' && getState().walletAccount) {
+    loadPins();
+  }
+}
+
+function onStickyOpenChange(checked) {
+  setState({ stickyOpen: checked });
+}
+
 // Boot
 async function boot() {
   walletManager = createWalletManager({ chain: 'solana:mainnet' });
@@ -332,24 +455,26 @@ async function boot() {
   walletManager.addEventListener('connectionChanged', (info) => {
     if (info) {
       setState({ walletAccount: info.account, connectedWallet: info.wallet });
+      if (getState().mode === 'lockdown') loadPins();
     } else {
       // Wallet disconnected — cancel in-flight actions
       for (const [key] of proposalActions) {
         proposalActions.set(key, 'idle');
       }
       settingsGuard.next();
-      setState({ walletAccount: null, connectedWallet: null });
+      setState({ walletAccount: null, connectedWallet: null, pinned: [], lockdownActive: null });
     }
   });
 
   walletManager.addEventListener('accountChanged', (account) => {
-    setState({ walletAccount: account });
+    setState({ walletAccount: account, lockdownActive: null });
+    if (getState().mode === 'lockdown') loadPins();
   });
 
   init(render);
 
   const state = getState();
-  if (state.multisigAddress) {
+  if (state.mode === 'open' && state.multisigAddress) {
     await loadMultisig();
     await loadProposals();
   }

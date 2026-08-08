@@ -134,6 +134,36 @@ export async function fetchMultisig(rpcUrl, multisigAddress) {
 }
 
 /**
+ * Fetch and deserialize multiple Multisig accounts via getMultipleAccounts.
+ * Per-account failures (missing, unparseable) are reported per-entry so one
+ * bad pin never hides the others; RPC transport errors still throw.
+ */
+export async function fetchMultisigBatch(rpcUrl, addresses) {
+  const results = [];
+  for (let i = 0; i < addresses.length; i += 100) {
+    const batch = addresses.slice(i, i + 100);
+    const response = await rpcCall(rpcUrl, 'getMultipleAccounts', [
+      batch,
+      { encoding: 'base64', commitment: 'confirmed' },
+    ]);
+    for (let j = 0; j < batch.length; j++) {
+      const info = response?.value?.[j];
+      if (!info?.data) {
+        results.push({ address: batch[j], multisig: null, error: 'Account not found on-chain' });
+        continue;
+      }
+      try {
+        const multisig = deserializeMultisig(base64ToUint8Array(info.data[0]));
+        results.push({ address: batch[j], multisig, error: null });
+      } catch (err) {
+        results.push({ address: batch[j], multisig: null, error: 'Not a Squads multisig: ' + err.message });
+      }
+    }
+  }
+  return results;
+}
+
+/**
  * Fetch proposals for a range of transaction indices.
  * Returns array of { index, proposal } objects (skips null/non-existent).
  */

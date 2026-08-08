@@ -1,6 +1,7 @@
 /**
  * State management — localStorage hydration + in-memory state + setState()->render()
  */
+import { resolveBootMode, hasAnyPins, isStickyOpen, setStickyOpen } from './pins.js';
 
 const EXPLORER_URL = 'https://solscan.io';
 
@@ -47,6 +48,18 @@ export function init(render) {
     explorerUrl: EXPLORER_URL,
     multisigAddress: savedAddress || '',
 
+    // Lockdown mode
+    mode: resolveBootMode({
+      hasPins: hasAnyPins(),
+      stickyOpen: isStickyOpen(),
+      sessionMode: sessionStorage.getItem('modeOverride'),
+    }),
+    stickyOpen: isStickyOpen(),
+    pinned: [],
+    loadingPins: false,
+    pinsError: null,
+    lockdownActive: null,
+
     // Runtime state (never persisted)
     multisig: null,
     proposals: [],
@@ -90,6 +103,14 @@ export function setState(partial) {
   }
   if ('multisigAddress' in partial) {
     localStorage.setItem('multisigAddress', partial.multisigAddress);
+  }
+  if ('mode' in partial) {
+    // Session-scoped: an explicit mode switch holds for this tab only, so
+    // lockdown re-asserts on the next visit unless stickyOpen is set.
+    sessionStorage.setItem('modeOverride', partial.mode);
+  }
+  if ('stickyOpen' in partial) {
+    setStickyOpen(partial.stickyOpen);
   }
 
   if (renderFn) renderFn();
