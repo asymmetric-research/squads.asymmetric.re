@@ -1,0 +1,30 @@
+# Internet-facing ALB for https://squads.asymmetric.re. Same name as the
+# Ingress config-management used to own, so the cutover keeps the ALB (and
+# its DNS target) rather than provisioning a new one.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: squads-verifier
+  namespace: squads-verifier
+  labels:
+    app.kubernetes.io/name: squads-verifier
+  annotations:
+    alb.ingress.kubernetes.io/ssl-redirect: '443'
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS":443}]'
+    alb.ingress.kubernetes.io/ssl-policy: ELBSecurityPolicy-TLS13-1-2-2021-06
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/tags: env=prod,app=squads-verifier
+spec:
+  ingressClassName: alb
+  rules:
+    - host: squads.asymmetric.re
+      http:
+        paths:
+          - backend:
+              service:
+                name: squads-verifier
+                port:
+                  number: 80
+            path: /
+            pathType: Prefix

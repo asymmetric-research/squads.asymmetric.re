@@ -1,0 +1,65 @@
+# PR-preview bucket: each PR build is synced to pr-<num>/<sha>/ by
+# .github/workflows/preview.yml and served through CloudFront
+# (preview-distribution.yaml) via the S3 *website* endpoint, which resolves
+# directory index.html documents natively. The website endpoint speaks plain
+# HTTP, so the bucket is public-read with no TLS-only deny (unlike
+# web-assets); viewers still get HTTPS from CloudFront.
+apiVersion: s3.services.k8s.aws/v1alpha1
+kind: Bucket
+metadata:
+  name: asymmetric-research-squads-verifier-previews
+  namespace: squads-verifier
+  labels:
+    app.kubernetes.io/name: squads-verifier
+spec:
+  name: asymmetric-research-squads-verifier-previews
+  versioning:
+    status: "Enabled"
+  website:
+    indexDocument:
+      suffix: index.html
+    errorDocument:
+      key: 404.html
+  publicAccessBlock:
+    blockPublicACLs: false
+    blockPublicPolicy: false
+    ignorePublicACLs: false
+    restrictPublicBuckets: false
+  policy: |
+    {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Sid": "PublicReadGetObject",
+                "Effect": "Allow",
+                "Principal": "*",
+                "Action": [
+                    "s3:GetObject"
+                ],
+                "Resource": [
+                    "arn:aws:s3:::asymmetric-research-squads-verifier-previews/*"
+                ]
+            }
+        ]
+    }
+  # Sole cleanup mechanism: previews persist for a flat 30 days from upload,
+  # independent of later pushes or the PR closing, then expire here.
+  # With versioning on, expiry only writes a delete marker, so noncurrent versions and the markers need their own expiry rules.
+  lifecycle:
+    rules:
+      - id: expire-previews
+        status: Enabled
+        filter:
+          prefix: ''
+        expiration:
+          days: 30
+        noncurrentVersionExpiration:
+          noncurrentDays: 7
+        abortIncompleteMultipartUpload:
+          daysAfterInitiation: 7
+      - id: cleanup-delete-markers
+        status: Enabled
+        filter:
+          prefix: ''
+        expiration:
+          expiredObjectDeleteMarker: true

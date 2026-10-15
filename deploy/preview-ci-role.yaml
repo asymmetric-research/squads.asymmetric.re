@@ -1,0 +1,46 @@
+# IAM role assumed by .github/workflows/preview.yml through the Teleport AWS integration (aws-integration-ops-prod) - no long-lived AWS keys in the repo.
+# The workflows join Teleport as the github-action-squads-verifier-preview-bot Machine ID bot, whose Teleport role only permits this IAM role and whose join token only accepts this repo's preview workflows.
+# The bot, role, and join token live in config-management (teleport/github-action-squads-verifier-preview-bot*.yaml).
+apiVersion: iam.services.k8s.aws/v1alpha1
+kind: Role
+metadata:
+  name: squads-verifier-preview-ci
+  namespace: squads-verifier
+  labels:
+    app.kubernetes.io/name: squads-verifier
+spec:
+  name: squads-verifier-preview-ci
+  description: 'Teleport-assumed role for squads-verifier PR previews (S3 sync only)'
+  ## Assume Role Policy only allows AssumeRole from the Teleport AWS integration
+  assumeRolePolicyDocument: |
+    {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Principal": {
+            "AWS": "arn:aws:iam::378477324284:role/teleport-aws-access"
+          },
+          "Action": "sts:AssumeRole"
+        }
+      ]
+    }
+  inlinePolicies:
+    PreviewBucketReadWrite: |
+      {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Sid": "ListPreviewBucket",
+            "Effect": "Allow",
+            "Action": ["s3:ListBucket"],
+            "Resource": "arn:aws:s3:::asymmetric-research-squads-verifier-previews"
+          },
+          {
+            "Sid": "WritePreviewObjects",
+            "Effect": "Allow",
+            "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+            "Resource": "arn:aws:s3:::asymmetric-research-squads-verifier-previews/*"
+          }
+        ]
+      }

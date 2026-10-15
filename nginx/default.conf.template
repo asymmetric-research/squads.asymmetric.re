@@ -1,0 +1,27 @@
+# Rendered at image build time by scripts/render-nginx.sh, which fills the
+# __RPC_*__ placeholders from the RPC_URL build arg.
+server {
+    listen 8080 default_server;
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # TLS terminates at the ALB and nginx listens on 8080, so an absolute
+    # Location built from the request scheme + listen port would be
+    # http://squads.asymmetric.re:8080/... — emit relative redirects instead.
+    absolute_redirect off;
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+
+    # Server-level add_header only applies to locations that set none of their
+    # own, so keep every header here and add none inside location blocks.
+    add_header X-Frame-Options "DENY" always;
+    add_header Strict-Transport-Security "max-age=63072000" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    # Stricter than the <meta> CSP in index.html (both apply): connects are
+    # limited to this origin, the Squads API and the RPC endpoint.
+    add_header Content-Security-Policy "upgrade-insecure-requests; frame-src 'self'; default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; object-src 'none'; connect-src 'self' https://squads.asymmetric.re https://v4-api.squads.so __RPC_ORIGIN__ __RPC_WS_ORIGIN__" always;
+}

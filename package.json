@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "webpack serve --config webpack.config.js --mode development",
     "build": "webpack --config webpack.config.js --mode production",
-    "build:hash": "bash scripts/build.sh"
+    "build:hash": "bash scripts/build.sh",
+    "test": "for f in test/*.mjs; do node \"$f\" || exit 1; done"
   },
   "dependencies": {},
   "devDependencies": {

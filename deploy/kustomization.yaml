@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: squads-verifier
+
+resources:
+  # Production workload (the staging site is separate — staging/ has its own
+  # kustomization and ArgoCD Application).
+  - deployment.yaml
+  - service.yaml
+  - ingress.yaml
+  - certificate.yaml
+  # PR previews (see README).
+  - preview-bucket.yaml
+  - preview-distribution.yaml
+  - preview-ci-role.yaml

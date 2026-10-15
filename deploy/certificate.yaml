@@ -1,0 +1,16 @@
+# ACM certificate for the ALB, created through ACK. ACM names are immutable:
+# adding a SAN here replaces the live cert with a new PENDING_VALIDATION one.
+apiVersion: acm.services.k8s.aws/v1alpha1
+kind: Certificate
+metadata:
+  name: squads-verifier
+  namespace: squads-verifier
+  labels:
+    app.kubernetes.io/name: squads-verifier
+spec:
+  domainName: squads.asymmetric.re
+  tags:
+    - key: env
+      value: prod
+    - key: app
+      value: squads-verifier

@@ -1,0 +1,52 @@
+# CloudFront in front of the preview bucket's S3 website endpoint — HTTPS on
+# the default *.cloudfront.net domain (no custom domain: CloudFront aliases
+# need a us-east-1 ACM cert, which the eu-west-1-pinned ACK controller can't
+# mint, and unguessable preview URLs don't need one). Content under
+# pr-<num>/<sha>/ is immutable by construction, so the managed
+# CachingOptimized policy needs no invalidation.
+# Requires the ACK cloudfront controller (config-management ops-prod/ack).
+apiVersion: cloudfront.services.k8s.aws/v1alpha1
+kind: Distribution
+metadata:
+  name: squads-verifier-previews
+  namespace: squads-verifier
+  labels:
+    app.kubernetes.io/name: squads-verifier
+spec:
+  distributionConfig:
+    enabled: true
+    comment: squads-verifier PR previews
+    httpVersion: http2
+    priceClass: PriceClass_100
+    origins:
+      items:
+        - id: previews-s3-website
+          domainName: asymmetric-research-squads-verifier-previews.s3-website-eu-west-1.amazonaws.com
+          originPath: ""
+          originAccessControlID: ""
+          connectionAttempts: 3
+          connectionTimeout: 10
+          customHeaders: {}
+          originShield:
+            enabled: false
+          customOriginConfig:
+            originProtocolPolicy: http-only
+            httpPort: 80
+            # The CRD spells this field httpSPort.
+            httpSPort: 443
+            originReadTimeout: 30
+            originKeepaliveTimeout: 5
+            originSSLProtocols:
+              items: [TLSv1, TLSv1.1, TLSv1.2]
+    defaultCacheBehavior:
+      targetOriginID: previews-s3-website
+      viewerProtocolPolicy: redirect-to-https
+      cachePolicyID: 658327ea-f89d-4fab-a63d-7e88639e58f6
+      compress: true
+    restrictions:
+      geoRestriction:
+        restrictionType: none
+    # The shared static-site Web ACL (common ruleset), also used by dotcom and sirndotorg previews
+    webACLID: arn:aws:wafv2:us-east-1:378477324284:global/webacl/dotcom-website/d1b6084a-9e3e-4124-9d36-20f5565dd16c
+    viewerCertificate:
+      cloudFrontDefaultCertificate: true

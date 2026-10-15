@@ -64,10 +64,15 @@ squads.asymmetric.re/
 │   ├── wallet.js               # Wallet Standard discovery + adapter (zero deps)
 │   ├── ui-layout.js            # All views: setup, main layout, modals, proposal detail
 │   └── ui-helpers.js           # Hyperscript el(), address elements, formatting, sanitization
+├── Dockerfile                  # nginx image serving dist/ (RPC_URL build arg)
+├── nginx/default.conf.template # Security headers + CSP, RPC origin filled in at build
+├── deploy/                     # Kubernetes manifests (prod, staging/, PR-preview infra)
+├── docs/deploying.md           # Release runbook
 ├── public/                     # Static assets (SVG logos)
 ├── scripts/
 │   ├── build.sh                # Production build + hash generation
 │   ├── generate-hash.sh        # SHA-256 of dist/ contents
+│   ├── render-nginx.sh         # Fill the RPC origin into the nginx CSP
 │   └── verify.sh               # Verify a build against an expected hash
 └── test/
     ├── verify.mjs              # Discriminator + deserialization tests
@@ -95,21 +100,13 @@ bash scripts/verify.sh <expected-hash> dist
 
 ### Deploy
 
-The `dist/` directory is a fully static site. Deploy to any static host:
+squads.asymmetric.re is built into an nginx image and deployed to Kubernetes by ArgoCD: every PR gets a static preview,
+every merge to `main` goes to a Teleport-only staging site, and a `vX.Y.Z` tag ships to production. See
+[`docs/deploying.md`](docs/deploying.md) for the runbook and [`deploy/README.md`](deploy/README.md) for the
+infrastructure.
 
-```sh
-# Cloudflare Pages
-npx wrangler pages deploy dist
-
-# Vercel
-npx vercel dist
-
-# Netlify
-npx netlify deploy --dir=dist --prod
-
-# Or just serve locally
-npx serve dist
-```
+The deployed bundle has the production RPC endpoint baked in, so to check the live site against a build hash, build
+with the same `RPC_URL` (visible in the served `app.*.js`).
 
 ## Configuration
 
@@ -154,6 +151,7 @@ npm run build:hash    # production build + integrity hash
 ### Tests
 
 ```sh
+npm test                          # every test/*.mjs
 node test/verify.mjs              # discriminator + deserialization
 node test/cross-validate-pda.mjs  # PDA derivation vs @sqds/multisig
 ```

@@ -1,0 +1,12 @@
+# Staging site: tracks main via `main-<sha>` images, serves only behind
+# Teleport. Synced by its own ArgoCD Application (config-management
+# kubernetes/deployment/ops-staging/squads-verifier/) so argocd-image-updater
+# can pin staging to main-<sha> tags without touching the production image.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: squads-verifier
+
+resources:
+  - deployment.yaml
+  - service.yaml
