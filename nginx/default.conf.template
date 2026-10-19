@@ -21,7 +21,14 @@ server {
     add_header Strict-Transport-Security "max-age=63072000" always;
     add_header X-Content-Type-Options "nosniff" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-    # Stricter than the <meta> CSP in index.html (both apply): connects are
-    # limited to this origin, the Squads API and the RPC endpoint.
-    add_header Content-Security-Policy "upgrade-insecure-requests; frame-src 'self'; default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; object-src 'none'; connect-src 'self' https://squads.asymmetric.re https://v4-api.squads.so __RPC_ORIGIN__ __RPC_WS_ORIGIN__" always;
+    # Complements the <meta> CSP SvelteKit writes into index.html (see
+    # svelte.config.js); both apply. No default-src or script-src here: the
+    # meta policy allows SvelteKit's inline bootstrap by hash, and a header
+    # script-src would block it. This adds what a meta CSP can't express
+    # (frame-ancestors) and narrows connects to this origin, the Squads API and
+    # the RPC endpoint. The style hash is SvelteKit's screen-reader announcer
+    # (inline style="position: absolute; ... height: 1px" in
+    # @sveltejs/kit/src/core/sync/write_root.js); if a Kit upgrade changes it,
+    # the browser console names the new hash.
+    add_header Content-Security-Policy "upgrade-insecure-requests; frame-src 'self'; style-src 'self' 'unsafe-hashes' 'sha256-S8qMpvofolR8Mpjy4kQvEm7m1q8clzU4dfDH0AmvZjo='; img-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; object-src 'none'; connect-src 'self' https://squads.asymmetric.re https://v4-api.squads.so __RPC_ORIGIN__ __RPC_WS_ORIGIN__" always;
 }

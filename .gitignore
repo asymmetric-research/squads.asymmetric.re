@@ -1,7 +1,7 @@
 node_modules/
-dist/
+.svelte-kit/
+build/
 .DS_Store
 *.log
 .env
 .claude/
-public/VioletSans-Regular.woff2

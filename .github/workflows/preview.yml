@@ -34,22 +34,21 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 22
-      - run: npm ci
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - run: bun install --frozen-lockfile
       - name: Compute preview path
         id: path
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: echo "prefix=pr-${PR_NUMBER}/${HEAD_SHA:0:7}" >> "$GITHUB_OUTPUT"
-      # webpack emits relative asset URLs, so the same output works under any
-      # bucket prefix. Previews have no nginx, so only the <meta> CSP applies.
+      # The build is path-relative (no paths.base — see svelte.config.js), so
+      # the same output works under any bucket prefix. Previews have no nginx,
+      # so only the <meta> CSP applies.
       - name: Build static preview
         env:
           RPC_URL: ${{ vars.RPC_URL }}
-        run: npm run build
+        run: bun run build
       - name: Install Teleport binaries
         uses: teleport-actions/setup@b638ff596557cc3959eb6b5287d5e58e0c8ac6a6 # v1.1.1
         with:
@@ -76,7 +75,7 @@ jobs:
         env:
           PREFIX: ${{ steps.path.outputs.prefix }}
         run: |
-          tsh aws s3 sync dist/ "s3://${PREVIEW_BUCKET}/${PREFIX}/" --delete --no-progress
+          tsh aws s3 sync build/ "s3://${PREVIEW_BUCKET}/${PREFIX}/" --delete --no-progress
           # Bucket-root housekeeping: keep previews out of search indexes and
           # give the S3 website error document something to serve.
           printf 'User-agent: *\nDisallow: /\n' | tsh aws s3 cp - "s3://${PREVIEW_BUCKET}/robots.txt" --content-type text/plain

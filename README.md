@@ -40,62 +40,67 @@ All account parsing uses a hand-written Borsh reader with no external dependenci
 
 ## Project Structure
 
+A SvelteKit app, prerendered to a static client-only shell (`ssr = false`) with `@sveltejs/adapter-static`. The views
+are Svelte 5 components; the on-chain logic underneath is plain JavaScript with no runtime dependencies.
+
 ```
 squads.asymmetric.re/
-├── index.html                  # Shell — CSP headers, no inline scripts
-├── style.css                   # Full design system (dark/light, tokens, components)
-├── webpack.config.js           # Production build config (content hashing, minification)
 ├── src/
-│   ├── main.js                 # Boot, state wiring, event handlers
-│   ├── state.js                # Frozen immutable state + localStorage persistence
-│   ├── pins.js                 # Per-wallet pin store, membership check, boot-mode selection
-│   ├── decode-common.js        # Shared decoder helpers (amount/account formatting)
-│   ├── decoders-spl.js         # SPL Token / Token-2022 / ATA instruction decoders
-│   ├── decoders-native.js      # System, BPF loader, Stake, ComputeBudget, ALT decoders
-│   ├── program-info.js         # On-demand loader-account inspection (session-cached)
-│   ├── program-labels.js       # User-local program nicknames (localStorage)
-│   ├── ui-lockdown.js          # Lockdown views — squad grid, add-squad flow, mode toggle
-│   ├── rpc.js                  # JSON-RPC fetch wrapper, ALT resolution, batch fetching
-│   ├── squads.js               # Borsh reader, discriminators, PDA derivation, deserialization
-│   ├── crypto.js               # SHA-256 (Web Crypto), Ed25519 curve check, findProgramAddress
-│   ├── decode.js               # Instruction decoder registry (SPL Token, System, etc.)
-│   ├── transaction.js          # Transaction builder for approve/reject instructions
-│   ├── actions.js              # Vote flow (dynamic import, re-fetch, sign, confirm)
-│   ├── wallet.js               # Wallet Standard discovery + adapter (zero deps)
-│   ├── ui-layout.js            # All views: setup, main layout, modals, proposal detail
-│   └── ui-helpers.js           # Hyperscript el(), address elements, formatting, sanitization
-├── Dockerfile                  # nginx image serving dist/ (RPC_URL build arg)
-├── nginx/default.conf.template # Security headers + CSP, RPC origin filled in at build
+│   ├── app.html                # Page shell
+│   ├── hooks.client.ts         # Script-injection guard (MutationObserver)
+│   ├── routes/                 # Single route: +layout.ts (prerender, ssr off), +page.svelte (view switch)
+│   └── lib/
+│       ├── app.svelte.ts       # App state (runes) + actions: load, vote, pins, mode switching
+│       ├── toasts.svelte.ts    # Toast queue
+│       ├── format.ts           # Sanitization (bidi strip), timestamps, explorer URLs
+│       ├── components/         # Setup, Layout, ProposalRow/Detail, Instruction, LockdownHome, ...
+│       ├── style.css           # Full design system (dark/light, tokens, components)
+│       ├── pins.js             # Per-wallet pin store, membership check, boot-mode selection
+│       ├── decode-common.js    # Shared decoder helpers (amount/account formatting)
+│       ├── decoders-spl.js     # SPL Token / Token-2022 / ATA instruction decoders
+│       ├── decoders-native.js  # System, BPF loader, Stake, ComputeBudget, ALT decoders
+│       ├── program-info.js     # On-demand loader-account inspection (session-cached)
+│       ├── program-labels.js   # User-local program nicknames (localStorage)
+│       ├── resolver.js         # Vault / create-key / PDA → multisig resolution
+│       ├── rpc.js              # JSON-RPC fetch wrapper, ALT resolution, batch fetching
+│       ├── squads.js           # Borsh reader, discriminators, PDA derivation, deserialization
+│       ├── crypto.js           # SHA-256 (Web Crypto), Ed25519 curve check, findProgramAddress
+│       ├── decode.js           # Instruction decoder registry (SPL Token, System, etc.)
+│       ├── transaction.js      # Transaction builder for approve/reject instructions
+│       ├── actions.js          # Builds the vote transaction (loaded on demand)
+│       ├── wallet.js           # Wallet Standard discovery + adapter (zero deps)
+│       └── *.test.js           # Vitest: discriminators, deserialization, decoders, PDAs, pins, ...
+├── static/                     # Logos served as-is
+├── svelte.config.js            # Adapter, <meta> CSP (hash mode), fixed version name
+├── Dockerfile                  # nginx image serving build/ (RPC_URL build arg)
+├── nginx/default.conf.template # Security headers + header CSP, RPC origin filled in at build
 ├── deploy/                     # Kubernetes manifests (prod, staging/, PR-preview infra)
 ├── docs/deploying.md           # Release runbook
-├── public/                     # Static assets (SVG logos)
-├── scripts/
-│   ├── build.sh                # Production build + hash generation
-│   ├── generate-hash.sh        # SHA-256 of dist/ contents
-│   ├── render-nginx.sh         # Fill the RPC origin into the nginx CSP
-│   └── verify.sh               # Verify a build against an expected hash
-└── test/
-    ├── verify.mjs              # Discriminator + deserialization tests
-    └── cross-validate-pda.mjs  # PDA derivation cross-check against @sqds/multisig
+└── scripts/
+    ├── build.sh                # Production build + hash generation
+    ├── generate-hash.sh        # SHA-256 of build/ contents
+    ├── render-nginx.sh         # Fill the RPC origin into the nginx CSP
+    └── verify.sh               # Verify a build against an expected hash
 ```
 
 ## Quick Start
 
 ```sh
-npm install
-npm run dev         # starts on http://localhost:8080
+bun install
+bun run dev         # starts on http://localhost:5173
 ```
 
 ### Production Build
 
 ```sh
-npm run build:hash  # webpack production build + SHA-256 hash of dist/
+bun run build:hash  # production build + SHA-256 hash of build/
 ```
 
-The build hash is printed to stdout. Distribute it alongside the `dist/` folder so users can verify the build:
+The build is reproducible: the same source and `RPC_URL` give the same hash. Distribute the hash alongside the
+`build/` folder so users can verify it:
 
 ```sh
-bash scripts/verify.sh <expected-hash> dist
+bash scripts/verify.sh <expected-hash> build
 ```
 
 ### Deploy
@@ -106,7 +111,7 @@ every merge to `main` goes to a Teleport-only staging site, and a `vX.Y.Z` tag s
 infrastructure.
 
 The deployed bundle has the production RPC endpoint baked in, so to check the live site against a build hash, build
-with the same `RPC_URL` (visible in the served `app.*.js`).
+with the same `RPC_URL` (visible in the served JavaScript under `_app/`).
 
 ## Configuration
 
@@ -122,9 +127,9 @@ Settings persist in `localStorage` and sync across tabs.
 
 ## Security
 
-- **No innerHTML** — all DOM construction uses `createElement` + `textContent` via the `el()` hyperscript helper
+- **No innerHTML** — Svelte text interpolation only; no `{@html}` anywhere
 - **Bidi sanitization** — on-chain strings are stripped of Unicode bidirectional override characters before display
-- **Content Security Policy** — `default-src 'none'`; scripts and styles from `'self'` only; connects restricted to `https:` and `localhost`
+- **Content Security Policy** — `default-src 'none'`; scripts from `'self'` plus SvelteKit's inline bootstrap by hash; connects restricted to `https:` and `localhost` (the nginx header narrows them to the RPC endpoint)
 - **Script injection detection** — a `MutationObserver` halts the page if any unexpected `<script>` element is added at runtime
 - **Frame-busting** — CSP `frame-ancestors 'none'` prevents embedding in iframes
 - **No secrets** — RPC URLs and wallet keys are never sent to any backend; all operations are client-to-RPC
@@ -142,19 +147,17 @@ The official `@sqds/multisig` SDK depends on `@solana/web3.js` v1.x (~400 KB) an
 ## Development
 
 ```sh
-npm install
-npm run dev           # webpack-dev-server with hot reload
-npm run build         # production build
-npm run build:hash    # production build + integrity hash
+bun install
+bun run dev           # Vite dev server with hot reload
+bun run check         # svelte-check (types + a11y), warnings fail
+bun run lint          # Biome
+bun run build         # production build into build/
+bun run build:hash    # production build + integrity hash
+bun run test          # Vitest
 ```
 
-### Tests
-
-```sh
-npm test                          # every test/*.mjs
-node test/verify.mjs              # discriminator + deserialization
-node test/cross-validate-pda.mjs  # PDA derivation vs @sqds/multisig
-```
+Discriminators and struct layouts are cross-validated against `@sqds/multisig` in `src/lib/verify.test.js` and
+`src/lib/cross-validate-pda.test.js`.
 
 ## License
 

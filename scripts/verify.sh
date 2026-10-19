@@ -7,7 +7,7 @@ if [ $# -lt 1 ]; then
 fi
 
 EXPECTED="$1"
-DIST_DIR="${2:-dist}"
+DIST_DIR="${2:-build}"
 
 if [ ! -d "$DIST_DIR" ]; then
   echo "Error: directory '$DIST_DIR' not found."

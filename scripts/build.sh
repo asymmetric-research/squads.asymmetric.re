@@ -2,7 +2,7 @@
 set -euo pipefail
 
 echo "Building multisig-verifier..."
-npx webpack --config webpack.config.js --mode production
+bun run build
 
 echo ""
 echo "Generating build hash..."

@@ -3,7 +3,8 @@
 Kubernetes manifests for the Squads multisig verifier. Runs in the `squads-verifier` namespace of the `ops-prod` EKS
 cluster, serving https://squads.asymmetric.re behind an internet-facing ALB. Mirrors
 [dotcom's deploy](https://github.com/asymmetric-research/dotcom/tree/main/deploy): the container is nginx serving the
-webpack build (see the [Dockerfile](../Dockerfile)), with no runtime, no env vars and no application secrets.
+prerendered SvelteKit build (see the [Dockerfile](../Dockerfile)), with no runtime, no env vars and no application
+secrets.
 
 The ArgoCD `Application`s that sync these manifests live in `config-management` and point at this repo:
 `kubernetes/deployment/ops-prod/squads-verifier/` syncs `deploy/` to ops-prod, and
@@ -42,7 +43,7 @@ deploy/
 
 ## RPC endpoint
 
-The Solana RPC URL is baked into the image at build time: webpack inlines it into the bundle, and
+The Solana RPC URL is baked into the image at build time: Vite inlines it into the bundle, and
 [`scripts/render-nginx.sh`](../scripts/render-nginx.sh) writes its origin into the CSP `connect-src` in
 [`nginx/default.conf.template`](../nginx/default.conf.template), so the two can't drift. CI reads it from the
 `RPC_URL` repo variable. It is not a secret (every visitor's browser receives it) but it stays out of git because
@@ -50,7 +51,7 @@ this repo is public and scrapers harvest paid RPC endpoints from GitHub. Without
 `https://api.mainnet-beta.solana.com`.
 
 Baking the URL in, rather than substituting it at container start, means the files nginx serves are exactly the
-`dist/` that was built, so the build-hash check in the top-level README holds against the live site.
+`build/` that was built, so the build-hash check in the top-level README holds against the live site.
 
 To change the endpoint: update the variable, then cut a release (it reaches staging on the next merge to `main`).
 
@@ -70,14 +71,15 @@ transaction.
 
 ## PR previews
 
-Every branch PR gets a static preview: [`preview.yml`](../.github/workflows/preview.yml) runs `npm run build` (webpack
-emits relative asset URLs, so the output works under any prefix), syncs `dist/` to `pr-<num>/<shortsha>` in the
-preview bucket, and comments the URL on the PR. Each push gets a fresh immutable prefix, so there is no cache
+Every branch PR gets a static preview: [`preview.yml`](../.github/workflows/preview.yml) runs `bun run build` (no
+`paths.base`, so the output works under any prefix), syncs `build/` to `pr-<num>/<shortsha>` in the preview bucket,
+and comments the URL on the PR. Each push gets a fresh immutable prefix, so there is no cache
 invalidation. Every preview lives for 30 days from upload (the bucket lifecycle rule), regardless of later pushes or
 the PR closing.
 
 Previews serve the static build only: the nginx security headers (including the stricter CSP) are not exercised, only
-the `<meta>` CSP in `index.html`. Check headers on staging or locally:
+the `<meta>` CSP SvelteKit writes into `index.html` (configured in `svelte.config.js`). Check headers on staging or
+locally:
 
 ```sh
 docker build -t squads-verifier . && docker run --rm -p 8080:8080 squads-verifier
