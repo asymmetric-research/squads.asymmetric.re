@@ -30,5 +30,5 @@ server {
     # (inline style="position: absolute; ... height: 1px" in
     # @sveltejs/kit/src/core/sync/write_root.js); if a Kit upgrade changes it,
     # the browser console names the new hash.
-    add_header Content-Security-Policy "upgrade-insecure-requests; frame-src 'self'; style-src 'self' 'unsafe-hashes' 'sha256-S8qMpvofolR8Mpjy4kQvEm7m1q8clzU4dfDH0AmvZjo='; img-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; object-src 'none'; connect-src 'self' https://squads.asymmetric.re https://v4-api.squads.so __RPC_ORIGIN__ __RPC_WS_ORIGIN__" always;
+    add_header Content-Security-Policy "upgrade-insecure-requests; frame-src 'self'; style-src 'self' 'unsafe-hashes' 'sha256-S8qMpvofolR8Mpjy4kQvEm7m1q8clzU4dfDH0AmvZjo='; img-src 'self' data:; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; object-src 'none'; connect-src 'self' https://squads.asymmetric.re https://v4-api.squads.so __RPC_ORIGIN__ __RPC_WS_ORIGIN__" always;
 }
